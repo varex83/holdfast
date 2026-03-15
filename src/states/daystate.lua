@@ -1,17 +1,25 @@
 -- Day State
 -- Daytime gameplay - explore, gather resources, build
 
-local Class        = require("lib.class")
-local Camera       = require("src.core.camera")
-local Character    = require("src.characters.character")
-local Iso          = require("src.rendering.isometric")
-local DrawOrder    = require("src.rendering.draworder")
-local TileBatch    = require("src.rendering.spritebatch")
-local Tile         = require("src.world.tile")
-local WorldGen     = require("src.world.worldgen")
-local ChunkManager = require("src.world.chunk")
-local FogOfWar     = require("src.world.fogofwar")
-local Constants    = require("data.constants")
+local Class          = require("lib.class")
+local Camera         = require("src.core.camera")
+local Character      = require("src.characters.character")
+local Iso            = require("src.rendering.isometric")
+local DrawOrder      = require("src.rendering.draworder")
+local TileBatch      = require("src.rendering.spritebatch")
+local Tile           = require("src.world.tile")
+local WorldGen       = require("src.world.worldgen")
+local ChunkManager   = require("src.world.chunk")
+local FogOfWar       = require("src.world.fogofwar")
+local NodeManager    = require("src.resources.nodemanager")
+local HarvestManager = require("src.resources.harvesting")
+local RespawnManager = require("src.resources.respawn")
+local Inventory      = require("src.inventory.inventory")
+local SupplyDepot    = require("src.inventory.supplydepot")
+local BuildManager   = require("src.buildings.buildmanager")
+local BuildGhost     = require("src.buildings.buildghost")
+local HUD            = require("src.ui.hud")
+local Constants      = require("data.constants")
 
 local DayState = Class:extend()
 
@@ -39,19 +47,41 @@ function DayState:new(game)
     self.chunks = ChunkManager()
     self.fog    = FogOfWar()
 
-    self.player = { tx = 0.0, ty = 0.0, speed = 200 }  -- pixels/sec on screen
+    local respawn = RespawnManager(game.config)
+    self.nodes    = NodeManager(respawn)
+    self.respawn  = respawn
+    self.harvest  = HarvestManager(game.eventBus)
+
     self.playerClass = Constants.CLASS.WARRIOR
+    self.player = {
+        tx = 0.0,
+        ty = 0.0,
+        speed = 200,
+        ftx = 0,
+        fty = 1,
+    }
     self.playerCharacter = self:createWorldPlayerCharacter(self.playerClass)
+    self.inventory       = Inventory(self.playerClass)
+
+    self.depot = SupplyDepot(2, 2, game.eventBus)
+    self.depot:add("wood", 20)
+    self.depot:add("stone", 10)
+
+    self.buildings = BuildManager(game.eventBus)
+    self.buildings:placeFree("basecore", 0, 0)
+    self.ghost = BuildGhost()
+    self.hud   = HUD()
+
     self.debugMode = false
+    self.player.speed = self.playerCharacter.stats:getSpeed()
 end
 
 function DayState:enter(selectedClass)
     print("Entered Day State")
-    self.game.dayCounter   = (self.game.dayCounter or 0) + 1
-    self.timeRemaining     = self.game.config.dayLength
-    self.playerClass = selectedClass or self.playerClass or Constants.CLASS.WARRIOR
-    self.playerCharacter = self:createWorldPlayerCharacter(self.playerClass)
-    self.player.speed = self.playerCharacter.stats:getSpeed()
+    self.game.dayCounter = (self.game.dayCounter or 0) + 1
+    self.timeRemaining = self.game.config.dayLength
+
+    self:_setPlayerClass(selectedClass)
     self:_ensureValidSpawn()
 
     local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
@@ -67,12 +97,86 @@ function DayState:createWorldPlayerCharacter(classType)
     return character
 end
 
+function DayState:_setPlayerClass(classType)
+    local resolvedClass = classType or self.playerClass or Constants.CLASS.WARRIOR
+    local classChanged = resolvedClass ~= self.playerClass or not self.playerCharacter
+
+    self.playerClass = resolvedClass
+    if classChanged then
+        self.playerCharacter = self:createWorldPlayerCharacter(resolvedClass)
+        self.inventory = Inventory(resolvedClass)
+    end
+
+    self.player.speed = self.playerCharacter.stats:getSpeed()
+end
+
 function DayState:exit()
     print("Exited Day State")
+    self.ghost:deactivate()
+    self.harvest:cancel()
+end
+
+function DayState:_updateMovement(dt)
+    local sdx, sdy = self.game.input:getMoveVector()
+    if sdx ~= 0 or sdy ~= 0 then
+        local spd = self.player.speed * dt
+        local hw, hh = 32, 16
+        local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
+        local dty = (sdy * spd / hh - sdx * spd / hw) / 2
+
+        self:_movePlayer(dtx, dty)
+        self.playerCharacter:setDesiredMovement(dtx, dty)
+
+        local fx = dtx > 0 and 1 or (dtx < 0 and -1 or 0)
+        local fy = dty > 0 and 1 or (dty < 0 and -1 or 0)
+        if fx ~= 0 or fy ~= 0 then
+            self.player.ftx = fx
+            self.player.fty = fy
+        end
+    else
+        self.playerCharacter:setDesiredMovement(0, 0)
+    end
+
+    self.playerCharacter:updateState()
+end
+
+function DayState:_updateCamera(dt)
+    local rx, ry = self.game.input:getRightStick()
+    if math.abs(rx) > 0 or math.abs(ry) > 0 then
+        self.camera.x = self.camera.x + rx * 300 * dt
+        self.camera.y = self.camera.y + ry * 300 * dt
+    else
+        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+        self.camera:follow(px, py)
+    end
+
+    self.camera:update(dt)
+end
+
+function DayState:_updateWorld()
+    self.chunks:update(self.player.tx, self.player.ty)
+    self.fog:update(self.player.tx, self.player.ty)
+
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    local r = FogOfWar.VISION_RADIUS
+    for ddx = -r, r do
+        for ddy = -r, r do
+            if ddx * ddx + ddy * ddy <= r * r then
+                local tx = ptx + ddx
+                local ty = pty + ddy
+                self.fog:cacheType(tx, ty, self.chunks:getTile(tx, ty))
+            end
+        end
+    end
+
+    for _, chunk in pairs(self.chunks._chunks) do
+        self.nodes:syncChunk(chunk)
+    end
 end
 
 function DayState:update(dt)
-    self.timeRemaining  = self.timeRemaining - dt
+    self.timeRemaining = self.timeRemaining - dt
     self.game.timeOfDay = self.timeRemaining
 
     if self.timeRemaining <= 0 then
@@ -80,55 +184,12 @@ function DayState:update(dt)
         return
     end
 
-    -- Movement via input manager (keyboard + gamepad).
-    -- getMoveVector() returns normalised screen-space direction (right=+sdx, down=+sdy).
-    -- Convert to tile-space using iso projection inverse so screen speed is constant
-    -- regardless of direction (tiles are 64×32, so naive mapping would make
-    -- horizontal movement look twice as fast as vertical).
-    --   dtx = (sdx/HALF_W + sdy/HALF_H) / 2
-    --   dty = (sdy/HALF_H - sdx/HALF_W) / 2
-    local sdx, sdy = self.game.input:getMoveVector()
-    if sdx ~= 0 or sdy ~= 0 then
-        local spd  = self.player.speed * dt
-        local hw, hh = 32, 16   -- TILE_W/2, TILE_H/2
-        local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
-        local dty = (sdy * spd / hh - sdx * spd / hw) / 2
-        self:_movePlayer(dtx, dty)
-        self.playerCharacter:setDesiredMovement(dtx, dty)
-    else
-        self.playerCharacter:setDesiredMovement(0, 0)
-    end
+    self:_updateMovement(dt)
+    self:_updateCamera(dt)
+    self:_updateWorld()
 
-    -- Right stick pans camera; otherwise camera follows player
-    local rx, ry = self.game.input:getRightStick()
-    if math.abs(rx) > 0 or math.abs(ry) > 0 then
-        local cameraSpeed = 300
-        self.camera.x = self.camera.x + rx * cameraSpeed * dt
-        self.camera.y = self.camera.y + ry * cameraSpeed * dt
-    else
-        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
-        self.camera:follow(px, py)
-    end
-
-    -- Update world systems
-    self.chunks:update(self.player.tx, self.player.ty)
-    self.fog:update(self.player.tx, self.player.ty)
-
-    -- Cache tile types for all visible tiles while chunks are loaded
-    local ptx = math.floor(self.player.tx + 0.5)
-    local pty = math.floor(self.player.ty + 0.5)
-    local r   = FogOfWar.VISION_RADIUS
-    for ddx = -r, r do
-        for ddy = -r, r do
-            if ddx * ddx + ddy * ddy <= r * r then
-                local tx, ty = ptx + ddx, pty + ddy
-                local tileType = self.chunks:getTile(tx, ty)
-                self.fog:cacheType(tx, ty, tileType)
-            end
-        end
-    end
-
-    self.camera:update(dt)
+    self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
+    self.respawn:update(dt)
     self.playerCharacter:updateVisuals(dt)
 
     if self.game.world then
@@ -180,6 +241,12 @@ function DayState:_canMoveTo(tx, ty)
     for _, point in ipairs(samplePoints) do
         local tileX = math.floor(point[1] + 0.5)
         local tileY = math.floor(point[2] + 0.5)
+
+        local building = self.buildings:getAt(tileX, tileY)
+        if building and building.def and building.def.blocksMovement then
+            return false
+        end
+
         local tileType = self.chunks:getTile(tileX, tileY)
         local localX = point[1] - tileX
         local localY = point[2] - tileY
@@ -245,6 +312,12 @@ function DayState:_getPropOpacity(image, tx, ty)
     return 1
 end
 
+function DayState:_ghostTile()
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    return ptx + self.player.ftx, pty + self.player.fty
+end
+
 -- Returns tile rect {x1,y1,x2,y2} covering the visible screen area.
 function DayState:_visibleTileRect()
     local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
@@ -264,8 +337,8 @@ function DayState:_visibleTileRect()
         if ty > tyMax then tyMax = ty end
     end
     local m = 6
-    return math.floor(txMin)-m, math.floor(tyMin)-m,
-           math.ceil(txMax)+m,  math.ceil(tyMax)+m
+    return math.floor(txMin) - m, math.floor(tyMin) - m,
+           math.ceil(txMax) + m, math.ceil(tyMax) + m
 end
 
 -- Builds the sorted list of explored tiles to draw this frame.
@@ -277,10 +350,10 @@ function DayState:_buildDrawList(x1, y1, x2, y2)
             if state ~= "hidden" then
                 local tileType = state == "visible"
                     and self.chunks:getTile(tx, ty)
-                    or  self.fog:getCachedType(tx, ty)
+                    or self.fog:getCachedType(tx, ty)
                 if tileType then
                     local _, sy = Iso.tileToScreen(tx, ty)
-                    list[#list+1] = { sy=sy, tx=tx, ty=ty, t=tileType, visible=(state=="visible") }
+                    list[#list + 1] = {sy = sy, tx = tx, ty = ty, t = tileType, visible = (state == "visible")}
                 end
             end
         end
@@ -296,10 +369,9 @@ function DayState:draw()
 
     local x1, y1, x2, y2 = self:_visibleTileRect()
     local drawList = self:_buildDrawList(x1, y1, x2, y2)
-    table.sort(drawList, function(a, b) return a.sy < b.sy end)
-
     local worldTime = love.timer.getTime()
     local entityDrawList = {}
+
     for _, e in ipairs(drawList) do
         local dim = e.visible and 1 or 0.5
         local renderData = Tile.getRenderData(e.t, e.tx, e.ty, worldTime)
@@ -326,13 +398,14 @@ function DayState:draw()
             local opacity = self:_getPropOpacity(renderData.overlay.image, e.tx, e.ty)
             entityDrawList[#entityDrawList + 1] = {
                 sy = e.sy + Iso.TILE_H,
+                order = 10,
                 draw = function()
                     Iso.drawProp(renderData.overlay.image, e.tx, e.ty, {
                         scale = renderData.overlay.scale,
                         r = tint[1] * dim,
                         g = tint[2] * dim,
                         b = tint[3] * dim,
-                        a = opacity
+                        a = opacity,
                     })
                 end
             }
@@ -351,17 +424,64 @@ function DayState:draw()
     end
     love.graphics.setColor(1, 1, 1, 1)
 
+    for _, building in ipairs(self.buildings:getAll()) do
+        if self.fog:getState(building.tx, building.ty) ~= "hidden" then
+            entityDrawList[#entityDrawList + 1] = {
+                sy = building:screenY(),
+                order = 20,
+                draw = function()
+                    building:draw()
+                end
+            }
+        end
+    end
+
+    for _, node in pairs(self.nodes:getAll()) do
+        if node:isReady()
+            and node.tx >= x1 and node.tx <= x2
+            and node.ty >= y1 and node.ty <= y2
+            and self.fog:isVisible(node.tx, node.ty)
+        then
+            local _, sy = Iso.tileToScreen(node.tx, node.ty)
+            entityDrawList[#entityDrawList + 1] = {
+                sy = sy,
+                order = 30,
+                draw = function()
+                    node:draw()
+                end
+            }
+        end
+    end
+
+    if self.fog:getState(self.depot.tx, self.depot.ty) ~= "hidden" then
+        local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
+        entityDrawList[#entityDrawList + 1] = {
+            sy = depotSy,
+            order = 40,
+            draw = function()
+                self.depot:draw()
+                if self.depot:isNearby(self.player.tx, self.player.ty) then
+                    self.depot:drawNearbyHint()
+                end
+            end
+        }
+    end
+
     local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
     self.playerCharacter.position.x = psx
     self.playerCharacter.position.y = psy + 2
     entityDrawList[#entityDrawList + 1] = {
         sy = psy + 18,
+        order = 50,
         draw = function()
             self.playerCharacter:draw()
         end
     }
 
     table.sort(entityDrawList, function(a, b)
+        if a.sy == b.sy then
+            return (a.order or 0) < (b.order or 0)
+        end
         return a.sy < b.sy
     end)
 
@@ -369,35 +489,19 @@ function DayState:draw()
         entry.draw()
     end
 
+    self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
+    self.harvest:draw()
+
+    local gtx, gty = self:_ghostTile()
+    self.ghost:draw(gtx, gty, self.buildings, self.depot)
+
     if self.debugMode then
         self:drawDebugWorld(drawList)
     end
 
     self.camera:clear()
 
-    -- HUD
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setFont(self.font)
-    love.graphics.print("Day " .. self.game.dayCounter, 20, 20)
-
-    local minutes = math.floor(self.timeRemaining / 60)
-    local seconds = math.floor(self.timeRemaining % 60)
-    love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 20, 50)
-
-    love.graphics.setFont(self.smallFont)
-    love.graphics.print(
-        string.format("Tile: (%.0f, %.0f)", self.player.tx, self.player.ty), 20, 84)
-
-    local input = self.game.input
-    local controls
-    if input:isUsingGamepad() then
-        controls = "Left Stick: move  |  Right Stick: camera  |  " ..
-                   input:getControlPrompt("space", "y", "skip to night") .. "  |  " ..
-                   input:getControlPrompt("esc", "b", "menu")
-    else
-        controls = "WASD: move  |  Scroll: zoom  |  SPACE: skip to night  |  ESC: menu"
-    end
-    love.graphics.print(controls, 20, love.graphics.getHeight() - 22)
+    self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost)
 
     if self.debugMode then
         self:drawDebugUI()
@@ -485,19 +589,65 @@ end
 
 function DayState:keypressed(key, scancode, isrepeat)
     if key == "escape" then
-        self.game.stateMachine:setState("menu")
+        if self.ghost:isActive() then
+            self.ghost:deactivate()
+        else
+            self.game.stateMachine:setState("menu")
+        end
     elseif key == "space" then
         self.game.stateMachine:setState("night")
     elseif key == "f3" then
         self.debugMode = not self.debugMode
+    elseif key == "b" then
+        if self.ghost:isActive() then
+            self.ghost:cycleType()
+        else
+            self.ghost:activate()
+        end
+    elseif key == "r" then
+        if self.ghost:isActive() then
+            local tx, ty = self:_ghostTile()
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+        end
+    elseif key == "e" then
+        if not self.ghost:isActive() then
+            self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        end
+    elseif key == "f" then
+        if self.depot:isNearby(self.player.tx, self.player.ty) then
+            self.depot:depositAll(self.inventory)
+        end
     end
 end
 
 function DayState:gamepadPressed(joystick, button)
     if button == "b" then
-        self.game.stateMachine:setState("menu")
+        if self.ghost:isActive() then
+            self.ghost:deactivate()
+        else
+            self.game.stateMachine:setState("menu")
+        end
     elseif button == "y" then
         self.game.stateMachine:setState("night")
+    elseif button == "rightshoulder" then
+        if self.ghost:isActive() then
+            self.ghost:cycleType()
+        else
+            self.ghost:activate()
+        end
+    elseif button == "a" then
+        if self.ghost:isActive() then
+            local tx, ty = self:_ghostTile()
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+        end
+    elseif button == "x" then
+        if not self.ghost:isActive() then
+            self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        end
+    elseif button == "square" or button == "leftshoulder" then
+        if self.depot:isNearby(self.player.tx, self.player.ty) then
+            self.depot:depositAll(self.inventory)
+        end
     end
 end
 
