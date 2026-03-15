@@ -42,6 +42,11 @@ function SupplyDepot:count(resourceType)
     return self._stock[resourceType] or 0
 end
 
+-- Set absolute amount (used for server sync).
+function SupplyDepot:set(resourceType, amount)
+    self._stock[resourceType] = amount
+end
+
 function SupplyDepot:has(resourceType, amount)
     return (self._stock[resourceType] or 0) >= amount
 end

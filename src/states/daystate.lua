@@ -19,6 +19,8 @@ local BuildManager   = require("src.buildings.buildmanager")
 local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
 local Constants      = require("data.constants")
+local NetClient      = require("src.net.client")
+local Proto          = require("src.net.protocol")
 
 local DayState = Class:extend()
 
@@ -93,6 +95,12 @@ function DayState:new(game)
     self._prevMouse     = { x = -1, y = -1 }
 
     self.player.speed = self.playerCharacter.stats:getSpeed()
+
+    -- Multiplayer
+    self.net           = NetClient.new()
+    self.remotePlayers = {}   -- [id] = {tx, ty, name, class, hp}
+    self._netInputAccum = 0   -- send input at fixed rate
+    self:_initNetHandlers()
 end
 
 function DayState:enter(selectedClass)
@@ -133,6 +141,89 @@ function DayState:exit()
     print("Exited Day State")
     self.ghost:deactivate()
     self.harvest:cancel()
+    if self.net:isConnected() then self.net:disconnect() end
+end
+
+-- Call this to join a server session.
+function DayState:connectToServer(host, port, sessionId, playerName)
+    local classStr = tostring(self.playerClass):lower()
+    self.net:connect(host, port, sessionId, playerName or "Player", classStr)
+end
+
+function DayState:_initNetHandlers()
+    self.net:on(Proto.SNAPSHOT, function(msg)
+        -- Seed remote players from initial snapshot
+        self.remotePlayers = {}
+        if msg.players then
+            for id, p in pairs(msg.players) do
+                if id ~= self.net.playerID then
+                    self.remotePlayers[id] = {
+                        tx    = p.pos and p.pos.x or 0,
+                        ty    = p.pos and p.pos.y or 0,
+                        name  = p.name or "?",
+                        class = p.class or "warrior",
+                        hp    = p.hp or 100,
+                        maxHp = p.max_hp or 100,
+                        alive = p.alive ~= false,
+                    }
+                end
+            end
+        end
+        -- Sync depot stock from server
+        if msg.depot then
+            for res, amt in pairs(msg.depot) do
+                self.depot:set(res, amt)
+            end
+        end
+        print("[net] snapshot received, day=" .. tostring(msg.day))
+    end)
+
+    self.net:on(Proto.DELTA, function(msg)
+        -- Update remote players
+        if msg.players then
+            for id, p in pairs(msg.players) do
+                if id ~= self.net.playerID then
+                    local rp = self.remotePlayers[id]
+                    if not rp then
+                        rp = { name = p.name or "?", class = p.class or "warrior" }
+                        self.remotePlayers[id] = rp
+                    end
+                    if p.pos then rp.tx = p.pos.x; rp.ty = p.pos.y end
+                    if p.hp      then rp.hp    = p.hp      end
+                    if p.max_hp  then rp.maxHp = p.max_hp  end
+                    if p.alive ~= nil then rp.alive = p.alive end
+                end
+            end
+        end
+        -- Remove players that left
+        if msg.players then
+            for id in pairs(self.remotePlayers) do
+                if not msg.players[id] then
+                    -- keep them until we get a proper leave signal
+                end
+            end
+        end
+        -- Sync depot
+        if msg.depot then
+            for res, amt in pairs(msg.depot) do
+                self.depot:set(res, amt)
+            end
+        end
+        -- Sync day timer from server when connected
+        if self.net:isConnected() and msg.time_left then
+            self.timeRemaining = msg.time_left
+        end
+    end)
+
+    self.net:on(Proto.PHASE_CHANGE, function(msg)
+        if msg.phase == "NIGHT" then
+            self.game.stateMachine:setState("night")
+        end
+    end)
+
+    self.net:on(Proto.GAME_OVER, function(_msg)
+        self.game.stateMachine:setState("gameover")
+    end)
 end
 
 function DayState:_updateMovement(dt)
@@ -152,8 +243,20 @@ function DayState:_updateMovement(dt)
             self.player.ftx = fx
             self.player.fty = fy
         end
+
+        -- Send movement to server at ~20 Hz
+        self._netInputAccum = self._netInputAccum + dt
+        if self._netInputAccum >= 0.05 then
+            self._netInputAccum = 0
+            self.net:sendInput(sdx, sdy)
+        end
     else
         self.playerCharacter:setDesiredMovement(0, 0)
+        -- Send stop (zero input) once when movement ceases
+        if self._netInputAccum > 0 then
+            self._netInputAccum = 0
+            self.net:sendInput(0, 0)
+        end
     end
 
     self.playerCharacter:updateState()
@@ -218,6 +321,8 @@ function DayState:_updateWorld()
 end
 
 function DayState:update(dt)
+    self.net:update()
+
     self.timeRemaining  = self.timeRemaining - dt
     self.game.timeOfDay = self.timeRemaining
 
@@ -524,6 +629,39 @@ function DayState:_queuePlayerDraw(entityDrawList)
     }
 end
 
+local REMOTE_PLAYER_COLORS = {
+    warrior  = {0.9, 0.3, 0.3, 1},
+    archer   = {0.3, 0.8, 0.3, 1},
+    engineer = {0.3, 0.6, 1.0, 1},
+    scout    = {1.0, 0.8, 0.2, 1},
+}
+
+function DayState:_queueRemotePlayerDraws(entityDrawList)
+    if not self.net:isConnected() then return end
+    local sf = self.smallFont
+    for _, rp in pairs(self.remotePlayers) do
+        if rp.alive then
+            local sx, sy = Iso.tileToScreen(rp.tx, rp.ty)
+            entityDrawList[#entityDrawList + 1] = {
+                sy    = sy + 16,
+                order = 49,
+                draw  = function()
+                    local col = REMOTE_PLAYER_COLORS[rp.class] or {1, 1, 1, 1}
+                    love.graphics.setColor(col)
+                    love.graphics.circle("fill", sx, sy + 8, 9)
+                    love.graphics.setColor(0, 0, 0, 0.6)
+                    love.graphics.circle("line", sx, sy + 8, 9)
+                    -- Name label
+                    love.graphics.setFont(sf)
+                    love.graphics.setColor(1, 1, 1, 0.9)
+                    love.graphics.print(rp.name, sx - 20, sy - 10)
+                    love.graphics.setColor(1, 1, 1, 1)
+                end
+            }
+        end
+    end
+end
+
 function DayState:_sortAndDrawEntities(entityDrawList)
     table.sort(entityDrawList, compareEntityDrawEntries)
     for _, entry in ipairs(entityDrawList) do entry.draw() end
@@ -544,6 +682,7 @@ function DayState:draw()
     self:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
     self:_queueDepotDraw(entityDrawList)
     self:_queuePlayerDraw(entityDrawList)
+    self:_queueRemotePlayerDraws(entityDrawList)
     self:_sortAndDrawEntities(entityDrawList)
 
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
