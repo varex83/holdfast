@@ -6,8 +6,8 @@ local MenuState = Class:extend()
 
 function MenuState:new(game)
     self.game = game
-    self.font = love.graphics.newFont(32)
-    self.smallFont = love.graphics.newFont(16)
+    self.font = nil  -- Lazy loaded
+    self.smallFont = nil  -- Lazy loaded
     self.selectedOption = 1
     self.options = {
         "New Game",
@@ -30,6 +30,12 @@ function MenuState:update(dt)
 end
 
 function MenuState:draw()
+    -- Lazy load fonts
+    if not self.font then
+        self.font = love.graphics.newFont(32)
+        self.smallFont = love.graphics.newFont(16)
+    end
+
     love.graphics.setFont(self.font)
 
     -- Title

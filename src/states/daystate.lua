@@ -6,7 +6,8 @@ local DayState = Class:extend()
 
 function DayState:new(game)
     self.game = game
-    self.font = love.graphics.newFont(24)
+    self.font = nil  -- Lazy loaded
+    self.smallFont = nil  -- Lazy loaded
     self.timeRemaining = 600  -- 10 minutes
 end
 
@@ -39,6 +40,12 @@ function DayState:update(dt)
 end
 
 function DayState:draw()
+    -- Lazy load fonts
+    if not self.font then
+        self.font = love.graphics.newFont(24)
+        self.smallFont = love.graphics.newFont(14)
+    end
+
     -- Clear background with day color
     love.graphics.clear(0.5, 0.7, 0.9, 1)
 
@@ -60,7 +67,7 @@ function DayState:draw()
     love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 20, 50)
 
     -- Instruction
-    love.graphics.setFont(love.graphics.newFont(14))
+    love.graphics.setFont(self.smallFont)
     love.graphics.print("Press SPACE to skip to night (demo)", 20, love.graphics.getHeight() - 40)
     love.graphics.print("Press ESC to return to menu", 20, love.graphics.getHeight() - 20)
 

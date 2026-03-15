@@ -6,8 +6,8 @@ local GameOverState = Class:extend()
 
 function GameOverState:new(game)
     self.game = game
-    self.font = love.graphics.newFont(48)
-    self.smallFont = love.graphics.newFont(24)
+    self.font = nil  -- Lazy loaded
+    self.smallFont = nil  -- Lazy loaded
 end
 
 function GameOverState:enter()
@@ -25,6 +25,12 @@ function GameOverState:update(dt)
 end
 
 function GameOverState:draw()
+    -- Lazy load fonts
+    if not self.font then
+        self.font = love.graphics.newFont(48)
+        self.smallFont = love.graphics.newFont(24)
+    end
+
     -- Dark background
     love.graphics.clear(0.15, 0, 0, 1)
 

@@ -6,7 +6,8 @@ local NightState = Class:extend()
 
 function NightState:new(game)
     self.game = game
-    self.font = love.graphics.newFont(24)
+    self.font = nil  -- Lazy loaded
+    self.smallFont = nil  -- Lazy loaded
     self.timeRemaining = 300  -- 5 minutes
 end
 
@@ -38,6 +39,12 @@ function NightState:update(dt)
 end
 
 function NightState:draw()
+    -- Lazy load fonts
+    if not self.font then
+        self.font = love.graphics.newFont(24)
+        self.smallFont = love.graphics.newFont(14)
+    end
+
     -- Clear background with night color
     love.graphics.clear(0.1, 0.1, 0.2, 1)
 
@@ -63,7 +70,7 @@ function NightState:draw()
     love.graphics.print("WAVE ACTIVE", 20, 80)
 
     -- Instruction
-    love.graphics.setFont(love.graphics.newFont(14))
+    love.graphics.setFont(self.smallFont)
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.print("Press SPACE to skip to day (demo)", 20, love.graphics.getHeight() - 40)
     love.graphics.print("Press ESC to return to menu", 20, love.graphics.getHeight() - 20)

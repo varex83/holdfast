@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(make help:*)",
+      "Bash(make stats:*)",
+      "Bash(lua:*)",
+      "Bash(luac:*)",
+      "Bash(find:*)"
     ]
   }
 }

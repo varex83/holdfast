@@ -8,7 +8,7 @@ function Debug.new(game)
     local self = setmetatable({}, Debug)
     self.game = game
     self.enabled = false
-    self.font = love.graphics.newFont(12)
+    self.font = nil  -- Created on first draw
     self.updateRate = 0.5  -- Update stats every 0.5 seconds
     self.updateTimer = 0
     self.fps = 0
@@ -41,6 +41,11 @@ end
 -- Draw debug overlay
 function Debug:draw()
     if not self.enabled then return end
+
+    -- Lazy load font
+    if not self.font then
+        self.font = love.graphics.newFont(12)
+    end
 
     love.graphics.setFont(self.font)
     love.graphics.setColor(0, 0, 0, 0.7)
