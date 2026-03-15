@@ -110,6 +110,10 @@ function Game:mousereleased(x, y, button, istouch, presses)
     self.stateMachine:mousereleased(x, y, button, istouch, presses)
 end
 
+function Game:wheelmoved(x, y)
+    self.stateMachine:wheelmoved(x, y)
+end
+
 function Game:quit()
     print("Shutting down Holdfast...")
     -- Save game state if needed

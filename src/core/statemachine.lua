@@ -101,4 +101,11 @@ function StateMachine:mousereleased(x, y, button, istouch, presses)
     end
 end
 
+-- Forward mouse wheel to current state
+function StateMachine:wheelmoved(x, y)
+    if self.currentState and self.states[self.currentState].wheelmoved then
+        self.states[self.currentState]:wheelmoved(x, y)
+    end
+end
+
 return StateMachine

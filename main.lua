@@ -57,6 +57,12 @@ function love.mousereleased(x, y, button, istouch, presses)
     end
 end
 
+function love.wheelmoved(x, y)
+    if game then
+        game:wheelmoved(x, y)
+    end
+end
+
 function love.quit()
     if game then
         game:quit()
