@@ -100,7 +100,7 @@ function BuildGhost:_drawLabels(def, sx, sy, occupied, affordable)
 end
 
 -- Draw the ghost at the cursor tile.
-function BuildGhost:draw(buildManager, depot)
+function BuildGhost:draw(buildManager, depot, inventory)
     if not self._active then return end
 
     local btype = self:currentType()
@@ -108,7 +108,7 @@ function BuildGhost:draw(buildManager, depot)
     local sx, sy = Iso.tileToScreen(self._tx, self._ty)
 
     local occupied   = buildManager:isOccupied(self._tx, self._ty)
-    local affordable = buildManager:canAfford(btype, depot)
+    local affordable = buildManager:canAfford(btype, depot, inventory)
     local valid      = not occupied and affordable
 
     local pulse = 0.50 + 0.25 * math.sin(love.timer.getTime() * 5)
