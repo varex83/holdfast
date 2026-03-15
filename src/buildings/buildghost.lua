@@ -3,10 +3,28 @@
 -- or gamepad right stick (handled externally via moveCursor / updateFromMouse).
 
 local Class     = require("lib.class")
+local AssetManager = require("src.core.assetmanager")
 local Iso       = require("src.rendering.isometric")
 local Buildings = require("data.buildings")
 
 local BuildGhost = Class:extend()
+
+local function getImage(spriteDef)
+    if not spriteDef then
+        return nil
+    end
+
+    local assets = AssetManager.getCurrent()
+    if spriteDef.asset then
+        return assets:getImage(spriteDef.asset)
+    end
+
+    if spriteDef.path then
+        return assets:getImageFromRef(spriteDef.path, spriteDef)
+    end
+
+    return nil
+end
 
 local BUILD_ORDER = { "wall", "gate", "campfire" }
 
@@ -52,6 +70,35 @@ function BuildGhost:updateFromMouse(camera)
     self._ty          = math.floor(ty + 0.5)
 end
 
+function BuildGhost:_drawSprite(def, valid, pulse)
+    local spriteDef = def.sprite
+    local image = getImage(spriteDef)
+    if not image then return end
+    local tint = valid and {0.7, 1.0, 0.7, pulse} or {1.0, 0.5, 0.5, pulse}
+    Iso.drawProp(image, self._tx, self._ty, {
+        scale   = spriteDef.scale or 1,
+        ox      = spriteDef.ox or 0,
+        oy      = spriteDef.oy or 0,
+        anchorX = spriteDef.anchorX,
+        anchorY = spriteDef.anchorY,
+        r = tint[1], g = tint[2], b = tint[3], a = tint[4],
+    })
+end
+
+function BuildGhost:_drawLabels(def, sx, sy, occupied, affordable)
+    local reason = occupied and " [occupied]" or (not affordable and " [need resources]" or "")
+    love.graphics.setFont(self._labelFont)
+    love.graphics.setColor(1, 1, 1, 0.9)
+    love.graphics.print(def.name .. reason, sx - 36, sy - 22)
+
+    local costParts = {}
+    for rtype, amt in pairs(def.cost) do
+        costParts[#costParts + 1] = amt .. " " .. rtype
+    end
+    love.graphics.setColor(0.8, 0.8, 0.3, 0.85)
+    love.graphics.print(#costParts > 0 and table.concat(costParts, ", ") or "free", sx - 36, sy - 10)
+end
+
 -- Draw the ghost at the cursor tile.
 function BuildGhost:draw(buildManager, depot)
     if not self._active then return end
@@ -84,18 +131,8 @@ function BuildGhost:draw(buildManager, depot)
         sx,       sy + 32,
         sx - 32,  sy + 16)
 
-    love.graphics.setFont(self._labelFont)
-    local reason = occupied and " [occupied]" or (not affordable and " [need resources]" or "")
-    love.graphics.setColor(1, 1, 1, 0.9)
-    love.graphics.print(def.name .. reason, sx - 36, sy - 22)
-
-    local costParts = {}
-    for rtype, amt in pairs(def.cost) do
-        costParts[#costParts + 1] = amt .. " " .. rtype
-    end
-    love.graphics.setColor(0.8, 0.8, 0.3, 0.85)
-    love.graphics.print(#costParts > 0 and table.concat(costParts, ", ") or "free",
-        sx - 36, sy - 10)
+    self:_drawSprite(def, valid, pulse)
+    self:_drawLabels(def, sx, sy, occupied, affordable)
 end
 
 return BuildGhost

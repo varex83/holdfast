@@ -8,7 +8,6 @@ local Iso            = require("src.rendering.isometric")
 local DrawOrder      = require("src.rendering.draworder")
 local TileBatch      = require("src.rendering.spritebatch")
 local Tile           = require("src.world.tile")
-local WorldGen       = require("src.world.worldgen")
 local ChunkManager   = require("src.world.chunk")
 local FogOfWar       = require("src.world.fogofwar")
 local NodeManager    = require("src.resources.nodemanager")
@@ -24,10 +23,10 @@ local Constants      = require("data.constants")
 local DayState = Class:extend()
 
 local CLASS_WORLD_VISUALS = {
-    [Constants.CLASS.WARRIOR]  = { appearance = "soldier", tint = {1.0, 1.0, 1.0, 1} },
-    [Constants.CLASS.ARCHER]   = { appearance = "soldier", tint = {1.0, 0.96, 0.90, 1} },
-    [Constants.CLASS.ENGINEER] = { appearance = "orc",     tint = {0.90, 0.92, 1.0, 1} },
-    [Constants.CLASS.SCOUT]    = { appearance = "soldier", tint = {0.82, 1.0, 0.90, 1} },
+    [Constants.CLASS.WARRIOR] = {appearance = "knight_swordman", tint = {1.0, 1.0, 1.0, 1}},
+    [Constants.CLASS.ARCHER] = {appearance = "knight_archer", tint = {1.0, 0.96, 0.90, 1}},
+    [Constants.CLASS.ENGINEER] = {appearance = "knight_templar", tint = {0.90, 0.92, 1.0, 1}},
+    [Constants.CLASS.SCOUT] = {appearance = "knight_spearman", tint = {0.82, 1.0, 0.90, 1}},
 }
 
 local function compareEntityDrawEntries(a, b)
@@ -60,8 +59,8 @@ function DayState:new(game)
     self.drawOrder = DrawOrder()
     self.tileBatch = TileBatch()
 
-    WorldGen.init(os.time())
-    self.chunks = ChunkManager()
+    self.game.tileManager:setProceduralSource(os.time())
+    self.chunks = ChunkManager(self.game.tileManager)
     self.fog    = FogOfWar()
 
     local respawn = RespawnManager(game.config)
@@ -113,7 +112,7 @@ end
 function DayState:createWorldPlayerCharacter(classType)
     local options = CLASS_WORLD_VISUALS[classType] or CLASS_WORLD_VISUALS[Constants.CLASS.WARRIOR]
     local character = Character.new(classType, 0, 0, options)
-    character.visualScale = 1.58
+    character:setVisualScale(1.58)
     return character
 end
 
@@ -321,10 +320,16 @@ function DayState:_getMovementSamplePoints(tx, ty)
     }
 end
 
-function DayState:_getPropOpacity(image, tx, ty)
+function DayState:_getPropOpacity(image, tx, ty, quad)
     local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
     local osx, osy = Iso.tileToScreen(tx, ty)
-    local iw, ih   = image:getDimensions()
+    local iw, ih
+    if quad then
+        local _, _, qw, qh = quad:getViewport()
+        iw, ih = qw, qh
+    else
+        iw, ih = image:getDimensions()
+    end
 
     local propLeft   = osx - iw * 0.5
     local propRight  = osx + iw * 0.5
@@ -405,15 +410,23 @@ function DayState:_queueTileOverlay(entry, renderData, dim, entityDrawList)
     if not renderData or not renderData.overlay then return end
 
     local overlay = renderData.overlay
-    local tint    = overlay.tint
-    local opacity = self:_getPropOpacity(overlay.image, entry.tx, entry.ty)
+    local tint = overlay.tint
+    local opacity = self:_getPropOpacity(overlay.image, entry.tx, entry.ty, overlay.quad)
     entityDrawList[#entityDrawList + 1] = {
         sy    = entry.sy + Iso.TILE_H,
         order = 10,
         draw  = function()
             Iso.drawProp(overlay.image, entry.tx, entry.ty, {
+                quad = overlay.quad,
                 scale = overlay.scale,
-                r = tint[1] * dim, g = tint[2] * dim, b = tint[3] * dim, a = opacity,
+                ox = overlay.ox,
+                oy = overlay.oy,
+                anchorX = overlay.anchorX,
+                anchorY = overlay.anchorY,
+                r = tint[1] * dim,
+                g = tint[2] * dim,
+                b = tint[3] * dim,
+                a = opacity,
             })
         end
     }
@@ -454,10 +467,20 @@ function DayState:_queueVisibleBuildingDraws(entityDrawList)
 end
 
 function DayState:_shouldDrawNode(node, x1, y1, x2, y2)
-    return node:isReady()
-        and node.tx >= x1 and node.tx <= x2
-        and node.ty >= y1 and node.ty <= y2
-        and self.fog:isVisible(node.tx, node.ty)
+    local tileType = self.chunks:getTile(node.tx, node.ty)
+    if node.tx < x1 or node.tx > x2 or node.ty < y1 or node.ty > y2 then
+        return false
+    end
+
+    if not self.fog:isVisible(node.tx, node.ty) then
+        return false
+    end
+
+    if node:isReady() then
+        return tileType ~= "tree" and tileType ~= "rock"
+    end
+
+    return node.resourceType == "wood"
 end
 
 function DayState:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
@@ -538,38 +561,68 @@ function DayState:draw()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function DayState:_drawDebugTile(e)
+    local def = Tile.get(e.t)
+    if def and def.collision and def.collision.shape == "circle" then
+        local ox = def.collision.offsetX or 0
+        local oy = def.collision.offsetY or 0
+        local sx, sy = Iso.tileToScreen(e.tx + ox, e.ty + oy)
+        love.graphics.setColor(1, 0.45, 0.15, 0.8)
+        love.graphics.circle("line", sx, sy + Iso.TILE_H * 0.5, def.collision.radius * Iso.TILE_W)
+        return true
+    elseif def and def.collision and def.collision.shape == "box" then
+        local ox = def.collision.offsetX or 0
+        local oy = def.collision.offsetY or 0
+        local w  = (def.collision.width  or 0.25) * Iso.TILE_W
+        local h  = (def.collision.height or 0.25) * Iso.TILE_H * 2
+        local sx, sy = Iso.tileToScreen(e.tx + ox, e.ty + oy)
+        love.graphics.setColor(1, 0.45, 0.15, 0.8)
+        love.graphics.rectangle("line", sx - w * 0.5, sy + Iso.TILE_H * 0.5 - h * 0.5, w, h)
+        return true
+    elseif e.t == "water" then
+        local sx, sy = Iso.tileToScreen(e.tx, e.ty)
+        love.graphics.setColor(0.15, 0.7, 1, 0.45)
+        love.graphics.polygon("line",
+            sx, sy,
+            sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
+            sx, sy + Iso.TILE_H,
+            sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
+    end
+    return false
+end
+
 function DayState:drawDebugWorld(drawList)
+    local visibleColliderCount = 0
+
     for _, e in ipairs(drawList) do
-        if e.visible then
-            local def = Tile.get(e.t)
-            if def and def.collision and def.collision.shape == "circle" then
-                local offsetX = def.collision.offsetX or 0
-                local offsetY = def.collision.offsetY or 0
-                local sx, sy  = Iso.tileToScreen(e.tx + offsetX, e.ty + offsetY)
-                local radius  = def.collision.radius * Iso.TILE_W
-                love.graphics.setColor(1, 0.45, 0.15, 0.8)
-                love.graphics.circle("line", sx, sy + Iso.TILE_H * 0.5, radius)
-            elseif e.t == "water" then
-                local sx, sy = Iso.tileToScreen(e.tx, e.ty)
-                love.graphics.setColor(0.15, 0.7, 1, 0.45)
-                love.graphics.polygon("line",
-                    sx, sy,
-                    sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
-                    sx, sy + Iso.TILE_H,
-                    sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
-            end
+        if e.visible and self:_drawDebugTile(e) then
+            visibleColliderCount = visibleColliderCount + 1
         end
     end
 
     local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
-    love.graphics.setColor(0.25, 1, 0.35, 0.85)
-    love.graphics.rectangle("line", psx - 16, psy - 14, 32, 32)
+    self.playerCharacter.position.x = psx
+    self.playerCharacter.position.y = psy + 2
+
+    if self.playerCharacter.hitbox and self.playerCharacter.position then
+        local playerBounds = self.playerCharacter.hitbox:getBounds(self.playerCharacter.position)
+        love.graphics.setColor(0.2, 0.95, 1, 0.9)
+        love.graphics.rectangle(
+            "line",
+            playerBounds.left,
+            playerBounds.top,
+            playerBounds.right - playerBounds.left,
+            playerBounds.bottom - playerBounds.top
+        )
+    end
 
     for _, point in ipairs(self:_getMovementSamplePoints(self.player.tx, self.player.ty)) do
         local sx, sy = Iso.tileToScreen(point[1], point[2])
         love.graphics.setColor(1, 1, 0.15, 0.95)
         love.graphics.circle("fill", sx, sy + 10, 3)
     end
+
+    self.debugVisibleColliderCount = visibleColliderCount
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -583,8 +636,17 @@ function DayState:drawDebugUI()
         string.format("Tile Pos: %.2f, %.2f", self.player.tx, self.player.ty),
         string.format("Screen Pos: %.0f, %.0f", px, py),
         "Tile: " .. tostring(tileType),
+        string.format("Visible Tile Colliders: %d", self.debugVisibleColliderCount or 0),
+        string.format(
+            "Player Hitbox: %dx%d (%d,%d)",
+            self.playerCharacter.hitbox and self.playerCharacter.hitbox.width or 0,
+            self.playerCharacter.hitbox and self.playerCharacter.hitbox.height or 0,
+            self.playerCharacter.hitbox and self.playerCharacter.hitbox.offsetX or 0,
+            self.playerCharacter.hitbox and self.playerCharacter.hitbox.offsetY or 0
+        ),
         string.format("Zoom: %.2f", self.camera.zoom),
         string.format("Loaded Chunks: %d", self:_countLoadedChunks()),
+        "Orange: tile collider  Cyan: player hitbox  Yellow: move samples",
         "F3: Toggle World Debug",
     }
 

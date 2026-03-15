@@ -5,6 +5,7 @@
 local Class     = require("lib.class")
 local Resources = require("data.resources")
 local Iso       = require("src.rendering.isometric")
+local AssetManager = require("src.core.assetmanager")
 
 local ResourceNode = Class:extend()
 
@@ -45,7 +46,20 @@ end
 -- Draw a coloured dot above the tile to indicate the resource.
 -- Camera transform must already be applied.
 function ResourceNode:draw()
-    if self.state == ResourceNode.STATE_DEPLETED then return end
+    if self.state == ResourceNode.STATE_DEPLETED then
+        if self.resourceType == "wood" then
+            local assets = AssetManager.getCurrent()
+            local atlas = assets:getAtlas("trees.small_oak")
+            Iso.drawProp(atlas.image, self.tx, self.ty, {
+                quad = assets:getQuad("trees.small_oak", 0),
+                scale = 1.6,
+                anchorX = 16,
+                anchorY = 58,
+                oy = 2,
+            })
+        end
+        return
+    end
 
     local sx, sy = Iso.tileToScreen(self.tx, self.ty)
     local c = self.color

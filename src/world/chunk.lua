@@ -3,7 +3,6 @@
 -- Chunks are generated on demand and cached; distant chunks are unloaded.
 
 local Class    = require("lib.class")
-local WorldGen = require("src.world.worldgen")
 
 local ChunkManager = Class:extend()
 
@@ -29,7 +28,8 @@ end
 
 -- ─── ChunkManager ────────────────────────────────────────────────────────────
 
-function ChunkManager:new()
+function ChunkManager:new(tileManager)
+    self.tileManager = tileManager
     self._chunks = {}   -- key → chunk table
 end
 
@@ -121,9 +121,9 @@ function ChunkManager:_generate(cx, cy)
         tiles[lx]     = {}
         resources[lx] = {}
         for ly = 0, CHUNK_SIZE - 1 do
-            local tileType         = WorldGen.getTileAt(ox + lx, oy + ly)
-            tiles[lx][ly]          = tileType
-            resources[lx][ly]      = WorldGen.getResourceAt(ox + lx, oy + ly, tileType)
+            local tileData         = self.tileManager:getTileData(ox + lx, oy + ly)
+            tiles[lx][ly]          = tileData and tileData.type or nil
+            resources[lx][ly]      = tileData and tileData.resourceType or nil
         end
     end
 

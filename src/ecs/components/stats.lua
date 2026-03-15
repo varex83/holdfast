@@ -4,52 +4,13 @@
 
 local Component = require('src.ecs.component')
 local Constants = require('data.constants')
+local Classes = require("data.classes")
 
 local Stats = {}
 
--- Base stats for each character class (from CLAUDE.md)
-local BASE_STATS = {
-    [Constants.CLASS.WARRIOR] = {
-        maxHp = 200,
-        armor = 10,
-        speed = 80,
-        attack = 25,
-        attackRange = 50,    -- Melee, short range
-        attackSpeed = 1.0,   -- Attacks per second
-        carryCapacity = 50   -- Lowest carry capacity
-    },
-    [Constants.CLASS.ARCHER] = {
-        maxHp = 100,
-        armor = 5,
-        speed = 150,
-        attack = 15,
-        attackRange = 300,   -- Ranged, medium range
-        attackSpeed = 0.8,
-        carryCapacity = 75
-    },
-    [Constants.CLASS.ENGINEER] = {
-        maxHp = 80,
-        armor = 3,
-        speed = 180,
-        attack = 0,          -- Cannot fight
-        attackRange = 0,
-        attackSpeed = 0,
-        carryCapacity = 100  -- Good carry capacity for building materials
-    },
-    [Constants.CLASS.SCOUT] = {
-        maxHp = 120,
-        armor = 3,
-        speed = 200,         -- Highest speed
-        attack = 8,          -- Low damage
-        attackRange = 40,    -- Dagger, very short range
-        attackSpeed = 1.2,   -- Fast attacks
-        carryCapacity = 120  -- Highest carry capacity
-    }
-}
-
 -- Create a Stats component
 function Stats.create(classType, entity)
-    local baseStats = BASE_STATS[classType]
+    local baseStats = Classes.getStats(classType)
     if not baseStats then
         error("Invalid class type: " .. tostring(classType))
     end
@@ -175,12 +136,12 @@ end
 
 -- Get base stats for a class (without creating component)
 function Stats.getBaseStatsForClass(classType)
-    return BASE_STATS[classType]
+    return Classes.getStats(classType)
 end
 
 -- Check if a class can attack
 function Stats.canClassAttack(classType)
-    local baseStats = BASE_STATS[classType]
+    local baseStats = Classes.getStats(classType)
     return baseStats and baseStats.attack > 0
 end
 

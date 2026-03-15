@@ -205,68 +205,68 @@ This plan divides work into **Developer A** (World & Systems) and **Developer B*
 ### Developer B: Character Classes & AI Foundation
 
 #### Week 4
-- [ ] **Class Definitions** (`data/classes.lua`)
+- [x] **Class Definitions** (`data/classes.lua`)
   - Warrior, Archer, Engineer, Scout stat tables
   - Ability definitions
 
-- [ ] **Class Implementations** (`src/characters/`)
+- [x] **Class Implementations** (`src/characters/`)
   - `warrior.lua`: High HP, melee attack
   - `archer.lua`: Medium HP, ranged attack
   - `engineer.lua`: No combat, building permissions
   - `scout.lua`: High speed, low damage
 
-- [ ] **Class Selection UI** (`src/ui/classselect.lua`)
+- [x] **Class Selection UI** (`src/ui/classselect.lua`)
   - Menu showing 4 classes
   - Stats preview
   - Select and spawn
 
 #### Week 5
-- [ ] **Ability System Base** (`src/combat/cooldown.lua` enhancement)
+- [x] **Ability System Base** (`src/combat/cooldown.lua` enhancement)
   - Ability activation framework
   - Cooldown per ability
   - Energy/mana cost (if applicable)
 
-- [ ] **Warrior Ability - Shield Bash** (`src/characters/abilities/shieldbash.lua`)
+- [x] **Warrior Ability - Shield Bash** (`src/characters/abilities/shieldbash.lua`)
   - Cone knockback
   - Stun duration
   - Cooldown
 
-- [ ] **Archer Ability - Volley** (`src/characters/abilities/volley.lua`)
+- [x] **Archer Ability - Volley** (`src/characters/abilities/volley.lua`)
   - Spread of projectiles
   - Arc angle
   - Cooldown
 
-- [ ] **Scout Ability - Cloak** (`src/characters/abilities/cloak.lua`)
+- [x] **Scout Ability - Cloak** (`src/characters/abilities/cloak.lua`)
   - Invisibility to enemies
   - Duration timer
   - Visual transparency effect
 
 #### Week 6
-- [ ] **Pathfinding** (`src/ai/pathfinding.lua`)
+- [x] **Pathfinding** (`src/ai/pathfinding.lua`)
   - A* algorithm on tile grid
   - Walkable tile check
   - Path caching
 
-- [ ] **Steering Behaviors** (`src/ai/steering.lua`)
+- [x] **Steering Behaviors** (`src/ai/steering.lua`)
   - Seek: move toward target
   - Separate: avoid overlap
   - Weighted blend
 
-- [ ] **AI Controller** (`src/ai/aicontroller.lua`)
+- [x] **AI Controller** (`src/ai/aicontroller.lua`)
   - State machine (idle, seek, attack, flee)
   - Target acquisition
   - Attack decision
 
-- [ ] **Basic Enemy - Shambler** (`src/enemies/shambler.lua`)
+- [x] **Basic Enemy - Shambler** (`src/enemies/shambler.lua`)
   - Walks toward base
   - Attacks walls/players
   - Low speed, medium HP
 
 #### Deliverables
-- 4 playable character classes with distinct stats
-- 3 class abilities functional (shield bash, volley, cloak)
-- Pathfinding working on tile grid
-- Basic enemy AI (shambler) seeks and attacks
+- [x] 4 playable character classes with distinct stats
+- [x] 3 class abilities functional (shield bash, volley, cloak)
+- [x] Pathfinding working on tile grid
+- [x] Basic enemy AI (shambler) seeks and attacks
 
 ---
 

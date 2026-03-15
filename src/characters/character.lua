@@ -9,6 +9,7 @@ local Health = require('src.ecs.components.health')
 local Hitbox = require('src.ecs.components.hitbox')
 local Sprite = require('src.ecs.components.sprite')
 local EventBus = require('src.core.eventbus')
+local AssetManager = require("src.core.assetmanager")
 local Constants = require('data.constants')
 local Anim8 = require('lib.anim8')
 
@@ -88,9 +89,17 @@ function Character.new(classType, x, y, options)
     self.attackTimer = 0
     self.attackDuration = 0.35
     self.visualScale = 1.0
+    self.baseVisualScale = 1.0
     self.drawOffsetY = 14
     self.drawOriginX = 50
     self.drawOriginY = 60
+    self.baseDrawOffsetY = self.drawOffsetY
+    self.baseHitbox = {
+        width = self.hitbox.width,
+        height = self.hitbox.height,
+        offsetX = self.hitbox.offsetX,
+        offsetY = self.hitbox.offsetY,
+    }
 
     -- Input reference (will be set externally)
     self.inputManager = nil
@@ -104,71 +113,61 @@ function Character.new(classType, x, y, options)
     return self
 end
 
-local visualCache = {}
-
-local function loadImage(path)
-    if not visualCache[path] then
-        visualCache[path] = love.graphics.newImage(path)
-        visualCache[path]:setFilter("nearest", "nearest")
-    end
-    return visualCache[path]
+local function buildAnimation(setDef, stateDef, image)
+    local grid = Anim8.newGrid(setDef.frameWidth, setDef.frameHeight, image:getDimensions())
+    return Anim8.newAnimation(grid(stateDef.frames, stateDef.row or 1), stateDef.frameDuration or 0.1)
 end
 
 function Character:setupVisuals()
-    local sheets
-    local frameWidth = 100
-    local frameHeight = 100
-    local idleFrames = "1-6"
-    local walkFrames = "1-8"
-    local attackFrames = "1-6"
-
-    if self.appearance == "orc" then
-        sheets = {
-            idle = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Idle.png",
-            walk = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Walk.png",
-            attack = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Attack01.png"
-        }
-    elseif self.appearance == "fantasy" then
-        sheets = {
-            idle = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Idle.png",
-            walk = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Walk.png",
-            attack = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Slash.png"
-        }
-        frameWidth = 32
-        frameHeight = 48
-        idleFrames = "1-5"
-        walkFrames = "1-5"
-        attackFrames = "1-7"
-        self.drawOffsetY = 10
-        self.drawOriginX = 16
-        self.drawOriginY = 34
-    else
-        sheets = {
-            idle = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Idle.png",
-            walk = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Walk.png",
-            attack = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Attack01.png"
-        }
-    end
+    local assets = AssetManager.getCurrent()
+    local setDef = assets:getAnimationSet("appearance." .. self.appearance)
 
     self.visuals = {
+        config = setDef,
         images = {
-            idle = loadImage(sheets.idle),
-            walk = loadImage(sheets.walk),
-            attack = loadImage(sheets.attack)
+            idle = assets:getImage(setDef.states.idle.image),
+            walk = assets:getImage(setDef.states.walk.image),
+            attack = assets:getImage(setDef.states.attack.image)
         }
     }
 
-    local idleGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.idle:getDimensions())
-    local walkGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.walk:getDimensions())
-    local attackGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.attack:getDimensions())
-
     self.visuals.animations = {
-        idle = Anim8.newAnimation(idleGrid(idleFrames, 1), 0.12),
-        walk = Anim8.newAnimation(walkGrid(walkFrames, 1), 0.08),
-        attack = Anim8.newAnimation(attackGrid(attackFrames, 1), 0.06)
+        idle = buildAnimation(setDef, setDef.states.idle, self.visuals.images.idle),
+        walk = buildAnimation(setDef, setDef.states.walk, self.visuals.images.walk),
+        attack = buildAnimation(setDef, setDef.states.attack, self.visuals.images.attack)
     }
 
+    self.drawOffsetY = setDef.drawOffsetY or self.drawOffsetY
+    self.drawOriginX = setDef.drawOriginX or self.drawOriginX
+    self.drawOriginY = setDef.drawOriginY or self.drawOriginY
+    self.baseDrawOffsetY = self.drawOffsetY
+    self.baseVisualScale = setDef.visualScale or self.visualScale
+    self.visualScale = self.baseVisualScale
+
+    if setDef.hitbox then
+        self.baseHitbox.width = setDef.hitbox.width or self.baseHitbox.width
+        self.baseHitbox.height = setDef.hitbox.height or self.baseHitbox.height
+        self.baseHitbox.offsetX = setDef.hitbox.offsetX or self.baseHitbox.offsetX
+        self.baseHitbox.offsetY = setDef.hitbox.offsetY or self.baseHitbox.offsetY
+    end
+
+    self:refreshScaledCollision()
+
     self.visuals.current = "idle"
+end
+
+function Character:refreshScaledCollision()
+    local scaleRatio = self.baseVisualScale ~= 0 and (self.visualScale / self.baseVisualScale) or 1
+    self.hitbox.width = self.baseHitbox.width * scaleRatio
+    self.hitbox.height = self.baseHitbox.height * scaleRatio
+    self.hitbox.offsetX = self.baseHitbox.offsetX * scaleRatio
+    self.hitbox.offsetY = self.baseHitbox.offsetY * scaleRatio
+    self.drawOffsetY = self.baseDrawOffsetY * scaleRatio
+end
+
+function Character:setVisualScale(scale)
+    self.visualScale = scale or self.baseVisualScale or 1
+    self:refreshScaledCollision()
 end
 
 function Character:setDesiredMovement(x, y)

@@ -108,7 +108,14 @@ function Iso.drawProp(image, tx, ty, opts)
     opts = opts or {}
 
     local sx, sy = Iso.tileToScreen(tx, ty)
-    local iw, ih = image:getDimensions()
+    local quad = opts.quad
+    local iw, ih
+    if quad then
+        local _, _, qw, qh = quad:getViewport()
+        iw, ih = qw, qh
+    else
+        iw, ih = image:getDimensions()
+    end
     local scale = opts.scale or 1
     local ox = opts.ox or 0
     local oy = opts.oy or 0
@@ -116,16 +123,30 @@ function Iso.drawProp(image, tx, ty, opts)
     local anchorY = opts.anchorY or ih
 
     love.graphics.setColor(opts.r or 1, opts.g or 1, opts.b or 1, opts.a or 1)
-    love.graphics.draw(
-        image,
-        sx + ox,
-        sy + TILE_H * 0.5 + oy,
-        0,
-        scale,
-        scale,
-        anchorX,
-        anchorY
-    )
+    if quad then
+        love.graphics.draw(
+            image,
+            quad,
+            sx + ox,
+            sy + TILE_H * 0.5 + oy,
+            0,
+            scale,
+            scale,
+            anchorX,
+            anchorY
+        )
+    else
+        love.graphics.draw(
+            image,
+            sx + ox,
+            sy + TILE_H * 0.5 + oy,
+            0,
+            scale,
+            scale,
+            anchorX,
+            anchorY
+        )
+    end
 end
 
 -- Highlight the tile under the mouse cursor (useful for build ghost previews).

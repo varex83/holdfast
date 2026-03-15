@@ -7,6 +7,8 @@ local StateMachine = require("src.core.statemachine")
 local World = require("src.ecs.world")
 local Debug = require("src.ui.debug")
 local InputManager = require("src.input.inputmanager")
+local AssetManager = require("src.core.assetmanager")
+local TileManager = require("src.world.tilemanager")
 local Flux = require("lib.flux")
 
 -- States
@@ -16,6 +18,7 @@ local DayState = require("src.states.daystate")
 local NightState = require("src.states.nightstate")
 local GameOverState = require("src.states.gameoverstate")
 local TestState = require("src.states.teststate")
+local AssetManagerState = require("src.states.assetmanagerstate")
 
 local Game = Class:extend()
 
@@ -30,6 +33,9 @@ function Game:new()
     self.world = World()
     self.debug = Debug.new(self)
     self.input = InputManager.new()
+    self.assetManager = AssetManager("assets/config/manifest.json")
+    self.assetManager:setCurrent()
+    self.tileManager = TileManager()
     self.tweens = Flux.group()
 
     -- Game state
@@ -41,6 +47,8 @@ function Game:load()
     print("Loading Holdfast...")
     print("Version: " .. self.constants.VERSION)
 
+    self.assetManager:load()
+
     -- Initialize states
     local menuState = MenuState(self)
     local settingsState = SettingsState(self)
@@ -48,6 +56,7 @@ function Game:load()
     local nightState = NightState(self)
     local gameOverState = GameOverState(self)
     local testState = TestState(self)
+    local assetManagerState = AssetManagerState(self)
 
     self.stateMachine:addState("menu", menuState)
     self.stateMachine:addState("settings", settingsState)
@@ -55,6 +64,7 @@ function Game:load()
     self.stateMachine:addState("night", nightState)
     self.stateMachine:addState("gameover", gameOverState)
     self.stateMachine:addState("test", testState)
+    self.stateMachine:addState("asset_manager", assetManagerState)
 
     -- Start in menu state
     self.stateMachine:setState("menu")
