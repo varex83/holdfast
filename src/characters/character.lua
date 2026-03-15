@@ -10,6 +10,7 @@ local Hitbox = require('src.ecs.components.hitbox')
 local Sprite = require('src.ecs.components.sprite')
 local EventBus = require('src.core.eventbus')
 local Constants = require('data.constants')
+local Anim8 = require('lib.anim8')
 
 local Character = {}
 Character.__index = Character
@@ -23,8 +24,9 @@ Character.STATE = {
 }
 
 -- Create a new character
-function Character.new(classType, x, y)
+function Character.new(classType, x, y, options)
     local self = setmetatable({}, Character)
+    options = options or {}
 
     -- Create entity
     self.entity = Entity()
@@ -62,10 +64,19 @@ function Character.new(classType, x, y)
         layer = 3
     }, self.entity)
     self.entity:addComponent('sprite', self.sprite)
+    if options.tint then
+        self.sprite:setColor(
+            options.tint[1] or self.sprite.r,
+            options.tint[2] or self.sprite.g,
+            options.tint[3] or self.sprite.b,
+            options.tint[4] or self.sprite.a
+        )
+    end
 
     -- Character state
     self.state = Character.STATE.IDLE
     self.classType = classType
+    self.appearance = options.appearance or "soldier"
 
     -- Movement
     self.moveDirection = {x = 0, y = 0}
@@ -73,14 +84,113 @@ function Character.new(classType, x, y)
 
     -- Facing direction (in radians)
     self.facingDirection = 0
+    self.animationSpeedScale = 1
+    self.attackTimer = 0
+    self.attackDuration = 0.35
+    self.visualScale = 1.0
+    self.drawOffsetY = 14
+    self.drawOriginX = 50
+    self.drawOriginY = 60
 
     -- Input reference (will be set externally)
     self.inputManager = nil
 
     -- World reference (for collision detection)
     self.world = nil
+    self.collisionChecker = nil
+
+    self:setupVisuals()
 
     return self
+end
+
+local visualCache = {}
+
+local function loadImage(path)
+    if not visualCache[path] then
+        visualCache[path] = love.graphics.newImage(path)
+        visualCache[path]:setFilter("nearest", "nearest")
+    end
+    return visualCache[path]
+end
+
+function Character:setupVisuals()
+    local sheets
+    local frameWidth = 100
+    local frameHeight = 100
+    local idleFrames = "1-6"
+    local walkFrames = "1-8"
+    local attackFrames = "1-6"
+
+    if self.appearance == "orc" then
+        sheets = {
+            idle = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Idle.png",
+            walk = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Walk.png",
+            attack = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Orc/Orc/Orc-Attack01.png"
+        }
+    elseif self.appearance == "fantasy" then
+        sheets = {
+            idle = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Idle.png",
+            walk = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Walk.png",
+            attack = "assets/The Fan-tasy Tileset (Free)/Art/Characters/Main Character/Character_Slash.png"
+        }
+        frameWidth = 32
+        frameHeight = 48
+        idleFrames = "1-5"
+        walkFrames = "1-5"
+        attackFrames = "1-7"
+        self.drawOffsetY = 10
+        self.drawOriginX = 16
+        self.drawOriginY = 34
+    else
+        sheets = {
+            idle = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Idle.png",
+            walk = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Walk.png",
+            attack = "assets/Tiny RPG Character Asset Pack v1.03 -Free Soldier&Orc/Characters(100x100)/Soldier/Soldier/Soldier-Attack01.png"
+        }
+    end
+
+    self.visuals = {
+        images = {
+            idle = loadImage(sheets.idle),
+            walk = loadImage(sheets.walk),
+            attack = loadImage(sheets.attack)
+        }
+    }
+
+    local idleGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.idle:getDimensions())
+    local walkGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.walk:getDimensions())
+    local attackGrid = Anim8.newGrid(frameWidth, frameHeight, self.visuals.images.attack:getDimensions())
+
+    self.visuals.animations = {
+        idle = Anim8.newAnimation(idleGrid(idleFrames, 1), 0.12),
+        walk = Anim8.newAnimation(walkGrid(walkFrames, 1), 0.08),
+        attack = Anim8.newAnimation(attackGrid(attackFrames, 1), 0.06)
+    }
+
+    self.visuals.current = "idle"
+end
+
+function Character:setDesiredMovement(x, y)
+    local length = math.sqrt(x * x + y * y)
+    if length > 0 then
+        self.moveDirection.x = x / length
+        self.moveDirection.y = y / length
+        self.isMoving = true
+        self.facingDirection = math.atan2(self.moveDirection.y, self.moveDirection.x)
+    else
+        self.moveDirection.x = 0
+        self.moveDirection.y = 0
+        self.isMoving = false
+    end
+end
+
+function Character:triggerAttackAnimation()
+    self.attackTimer = self.attackDuration
+    self.state = Character.STATE.ATTACKING
+    if self.visuals and self.visuals.animations.attack then
+        self.visuals.animations.attack:gotoFrame(1)
+    end
 end
 
 -- Set input manager
@@ -93,11 +203,22 @@ function Character:setWorld(world)
     self.world = world
 end
 
+function Character:setCollisionChecker(collisionChecker)
+    self.collisionChecker = collisionChecker
+end
+
 -- Update character
 function Character:update(dt)
     if not self.entity:isAlive() then
         self.state = Character.STATE.DEAD
         return
+    end
+
+    if self.attackTimer > 0 then
+        self.attackTimer = math.max(0, self.attackTimer - dt)
+        if self.attackTimer == 0 and self.state == Character.STATE.ATTACKING then
+            self.state = self.isMoving and Character.STATE.WALKING or Character.STATE.IDLE
+        end
     end
 
     -- Update health regeneration
@@ -118,6 +239,7 @@ function Character:update(dt)
 
     -- Update state
     self:updateState()
+    self:updateVisuals(dt)
 end
 
 -- Handle input
@@ -196,8 +318,11 @@ end
 
 -- Check if character can move to position
 function Character:canMoveTo(x, y)
+    if self.collisionChecker then
+        return self.collisionChecker(self, x, y)
+    end
+
     -- TODO: Implement proper tile collision when world/chunk system is ready
-    -- For now, just allow all movement
     return true
 end
 
@@ -208,9 +333,8 @@ function Character:updateState()
         return
     end
 
-    if self.state == Character.STATE.ATTACKING then
+    if self.state == Character.STATE.ATTACKING and self.attackTimer > 0 then
         -- Stay in attacking state until animation finishes
-        -- TODO: Implement attack timing
         return
     end
 
@@ -218,6 +342,25 @@ function Character:updateState()
         self.state = Character.STATE.WALKING
     else
         self.state = Character.STATE.IDLE
+    end
+end
+
+function Character:updateVisuals(dt)
+    if not self.visuals then
+        return
+    end
+
+    if self.state == Character.STATE.ATTACKING then
+        self.visuals.current = "attack"
+    elseif self.isMoving then
+        self.visuals.current = "walk"
+    else
+        self.visuals.current = "idle"
+    end
+
+    local animation = self.visuals.animations[self.visuals.current]
+    if animation then
+        animation:update(dt * self.animationSpeedScale)
     end
 end
 
@@ -231,7 +374,7 @@ function Character:attack()
         return false
     end
 
-    self.state = Character.STATE.ATTACKING
+    self:triggerAttackAnimation()
 
     -- Broadcast attack event
     EventBus.emit(Constants.EVENTS.PLAYER_ATTACK, {
@@ -242,6 +385,39 @@ function Character:attack()
     })
 
     return true
+end
+
+function Character:draw()
+    if not self:isAlive() then
+        return
+    end
+
+    if not self.visuals then
+        love.graphics.setColor(self.sprite.r, self.sprite.g, self.sprite.b, self.sprite.a)
+        love.graphics.rectangle('fill', self.position.x - 16, self.position.y - 16, 32, 32)
+        love.graphics.setColor(1, 1, 1, 1)
+        return
+    end
+
+    local image = self.visuals.images[self.visuals.current]
+    local animation = self.visuals.animations[self.visuals.current]
+    local scaleX = self.visualScale
+    if math.cos(self.facingDirection) < -0.1 then
+        scaleX = -scaleX
+    end
+
+    love.graphics.setColor(self.sprite.r, self.sprite.g, self.sprite.b, self.sprite.a)
+    animation:draw(
+        image,
+        self.position.x,
+        self.position.y + self.drawOffsetY,
+        0,
+        scaleX,
+        self.visualScale,
+        self.drawOriginX,
+        self.drawOriginY
+    )
+    love.graphics.setColor(1, 1, 1, 1)
 end
 
 -- Use ability

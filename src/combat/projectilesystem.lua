@@ -7,14 +7,20 @@ local Constants = require('data.constants')
 
 local ProjectileSystem = System:extend()
 
-function ProjectileSystem:new(world)
+function ProjectileSystem:new(world, collisionManager)
     ProjectileSystem.super.new(self, world)
     self.name = 'ProjectileSystem'
+    self.collisionManager = collisionManager -- Optional: uses bump.lua for spatial partitioning
     return self
 end
 
 -- Update all projectiles
 function ProjectileSystem:update(dt)
+    -- Sync collision manager with world entities if using spatial partitioning
+    if self.collisionManager then
+        self:syncCollisionManager()
+    end
+
     local entitiesToRemove = {}
 
     for _, entity in ipairs(self.world:getEntitiesWithComponents({'position', 'velocity', 'projectiledata'})) do
@@ -26,7 +32,29 @@ function ProjectileSystem:update(dt)
 
     -- Remove expired/hit projectiles
     for _, entity in ipairs(entitiesToRemove) do
+        -- Remove from collision manager first
+        if self.collisionManager then
+            self.collisionManager:removeEntity(entity)
+        end
         self.world:removeEntity(entity)
+    end
+end
+
+-- Sync collision manager with ECS world
+function ProjectileSystem:syncCollisionManager()
+    if not self.collisionManager then
+        return
+    end
+
+    -- Add new entities with hitboxes to collision manager
+    local entities = self.world:getEntitiesWithComponents({'position', 'hitbox'})
+    for _, entity in ipairs(entities) do
+        if not self.collisionManager:hasEntity(entity) then
+            self.collisionManager:addEntity(entity)
+        else
+            -- Update existing entity positions
+            self.collisionManager:updateEntity(entity)
+        end
     end
 end
 
@@ -106,6 +134,12 @@ end
 
 -- Check projectile collisions with all entities
 function ProjectileSystem:checkProjectileCollisions(entity, position, projectileData)
+    -- Use optimized spatial partitioning if collision manager available
+    if self.collisionManager then
+        return self:checkProjectileCollisionsOptimized(entity, position, projectileData)
+    end
+
+    -- Fallback to brute force collision checking
     local hitbox = entity:getComponent('hitbox')
     if not hitbox then
         return false
@@ -117,6 +151,58 @@ function ProjectileSystem:checkProjectileCollisions(entity, position, projectile
         if self:shouldCheckCollision(entity, otherEntity, projectileData) then
             local hit = self:checkEntityCollision(entity, otherEntity, hitbox, projectileBounds, position, projectileData)
             if hit then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- Optimized collision check using bump.lua spatial partitioning
+function ProjectileSystem:checkProjectileCollisionsOptimized(entity, position, projectileData)
+    local hitbox = entity:getComponent('hitbox')
+    if not hitbox then
+        return false
+    end
+
+    -- Create filter function for bump.lua queries
+    local function collisionFilter(item, other)
+        if not self:shouldCheckCollision(item, other, projectileData) then
+            return false
+        end
+
+        local otherHitbox = other:getComponent('hitbox')
+        if not otherHitbox or otherHitbox.type ~= 'hurtbox' then
+            return false
+        end
+
+        if not self:shouldCollide(hitbox.team, otherHitbox.team) then
+            return false
+        end
+
+        return true
+    end
+
+    -- Query nearby entities using spatial partitioning
+    local nearbyEntities = self.collisionManager:getCollisions(entity, collisionFilter)
+
+    -- Check collisions with filtered nearby entities
+    local projectileBounds = hitbox:getBounds(position)
+    for _, otherEntity in ipairs(nearbyEntities) do
+        if projectileData:canHit(otherEntity) then
+            -- Apply damage and effects
+            self:applyDamage(entity, otherEntity, projectileData)
+            projectileData:markHit(otherEntity)
+
+            EventBus.emit(Constants.EVENTS.PROJECTILE_HIT, {
+                projectile = entity,
+                target = otherEntity,
+                damage = projectileData.damage,
+                position = { x = position.x, y = position.y }
+            })
+
+            if projectileData:shouldDespawnOnHit() then
                 return true
             end
         end

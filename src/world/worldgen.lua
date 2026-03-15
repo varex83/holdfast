@@ -1,58 +1,21 @@
 -- World Generation
 -- Perlin noise-based infinite world with biomes and resource node placement.
+-- Uses Love2D's built-in love.math.noise() function.
 
 local WorldGen = {}
 
--- ─── Permutation table (classic Perlin) ─────────────────────────────────────
+-- ─── Seed offset for deterministic world generation ─────────────────────────
 
-local P = {}
+local seedOffsetX = 0
+local seedOffsetY = 0
 
-local function buildPermutation(seed)
-    math.randomseed(seed or 12345)
-    local base = {}
-    for i = 0, 255 do base[i] = i end
-    -- Fisher-Yates shuffle
-    for i = 255, 1, -1 do
-        local j = math.random(0, i)
-        base[i], base[j] = base[j], base[i]
-    end
-    -- Double the table to avoid index wrapping
-    for i = 0, 511 do P[i] = base[i % 256] end
-end
+-- ─── Noise wrapper ──────────────────────────────────────────────────────────
 
--- ─── Perlin helpers ──────────────────────────────────────────────────────────
-
-local function fade(t)  return t * t * t * (t * (t * 6 - 15) + 10) end
-local function lerp(a, b, t) return a + t * (b - a) end
-
-local function grad(hash, x, y)
-    local h = hash % 4
-    if h == 0 then return  x + y
-    elseif h == 1 then return -x + y
-    elseif h == 2 then return  x - y
-    else               return -x - y
-    end
-end
-
+-- Wrapper around love.math.noise that converts [0,1] range to [-1,1]
+-- and applies seed offset for deterministic generation
 local function noise2d(x, y)
-    local xi = math.floor(x) % 256
-    local yi = math.floor(y) % 256
-    local xf = x - math.floor(x)
-    local yf = y - math.floor(y)
-
-    local u = fade(xf)
-    local v = fade(yf)
-
-    local aa = P[P[xi]     + yi]
-    local ab = P[P[xi]     + yi + 1]
-    local ba = P[P[xi + 1] + yi]
-    local bb = P[P[xi + 1] + yi + 1]
-
-    return lerp(
-        lerp(grad(aa, xf,     yf    ), grad(ba, xf - 1, yf    ), u),
-        lerp(grad(ab, xf,     yf - 1), grad(bb, xf - 1, yf - 1), u),
-        v
-    )
+    local value = love.math.noise(x + seedOffsetX, y + seedOffsetY)
+    return value * 2 - 1  -- convert [0,1] to [-1,1]
 end
 
 -- Octave noise for more natural terrain
@@ -129,7 +92,12 @@ end
 -- ─── Initialisation ──────────────────────────────────────────────────────────
 
 function WorldGen.init(seed)
-    buildPermutation(seed)
+    -- Set seed offsets for deterministic world generation
+    -- Using large prime number multipliers to spread seed values
+    seed = seed or 12345
+    math.randomseed(seed)
+    seedOffsetX = math.random() * 10000
+    seedOffsetY = math.random() * 10000
 end
 
 return WorldGen
