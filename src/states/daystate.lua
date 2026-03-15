@@ -30,6 +30,14 @@ local CLASS_WORLD_VISUALS = {
     [Constants.CLASS.SCOUT] = {appearance = "soldier", tint = {0.82, 1.0, 0.90, 1}},
 }
 
+local function compareEntityDrawEntries(a, b)
+    if a.sy == b.sy then
+        return (a.order or 0) < (b.order or 0)
+    end
+
+    return a.sy < b.sy
+end
+
 function DayState:new(game)
     self.game          = game
     self.font          = love.graphics.newFont(24)
@@ -362,68 +370,78 @@ function DayState:_buildDrawList(x1, y1, x2, y2)
     return list
 end
 
-function DayState:draw()
-    love.graphics.clear(0.50, 0.70, 0.90, 1)
-
-    self.camera:apply()
-
-    local x1, y1, x2, y2 = self:_visibleTileRect()
-    local drawList = self:_buildDrawList(x1, y1, x2, y2)
-    local worldTime = love.timer.getTime()
-    local entityDrawList = {}
-
-    for _, e in ipairs(drawList) do
-        local dim = e.visible and 1 or 0.5
-        local renderData = Tile.getRenderData(e.t, e.tx, e.ty, worldTime)
-
-        if renderData and renderData.ground then
-            local tint = renderData.ground.tint
-            Iso.drawTexturedTile(
-                renderData.ground.image,
-                renderData.ground.quad,
-                e.tx,
-                e.ty,
-                tint[1] * dim,
-                tint[2] * dim,
-                tint[3] * dim,
-                1
-            )
-        else
-            local c = Tile.getColor(e.t)
-            Iso.drawTile(e.tx, e.ty, c[1] * dim, c[2] * dim, c[3] * dim, 1)
-        end
-
-        if renderData and renderData.overlay then
-            local tint = renderData.overlay.tint
-            local opacity = self:_getPropOpacity(renderData.overlay.image, e.tx, e.ty)
-            entityDrawList[#entityDrawList + 1] = {
-                sy = e.sy + Iso.TILE_H,
-                order = 10,
-                draw = function()
-                    Iso.drawProp(renderData.overlay.image, e.tx, e.ty, {
-                        scale = renderData.overlay.scale,
-                        r = tint[1] * dim,
-                        g = tint[2] * dim,
-                        b = tint[3] * dim,
-                        a = opacity,
-                    })
-                end
-            }
-        end
-
-        if e.visible then
-            local sx, sy = Iso.tileToScreen(e.tx, e.ty)
-            love.graphics.setColor(0, 0, 0, 0.12)
-            love.graphics.polygon("line",
-                sx, sy,
-                sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
-                sx, sy + Iso.TILE_H,
-                sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5
-            )
-        end
+function DayState:_drawTileGround(entry, renderData, dim)
+    if renderData and renderData.ground then
+        local tint = renderData.ground.tint
+        Iso.drawTexturedTile(
+            renderData.ground.image,
+            renderData.ground.quad,
+            entry.tx,
+            entry.ty,
+            tint[1] * dim,
+            tint[2] * dim,
+            tint[3] * dim,
+            1
+        )
+        return
     end
-    love.graphics.setColor(1, 1, 1, 1)
 
+    local color = Tile.getColor(entry.t)
+    Iso.drawTile(entry.tx, entry.ty, color[1] * dim, color[2] * dim, color[3] * dim, 1)
+end
+
+function DayState:_queueTileOverlay(entry, renderData, dim, entityDrawList)
+    if not renderData or not renderData.overlay then
+        return
+    end
+
+    local overlay = renderData.overlay
+    local tint = overlay.tint
+    local opacity = self:_getPropOpacity(overlay.image, entry.tx, entry.ty)
+    entityDrawList[#entityDrawList + 1] = {
+        sy = entry.sy + Iso.TILE_H,
+        order = 10,
+        draw = function()
+            Iso.drawProp(overlay.image, entry.tx, entry.ty, {
+                scale = overlay.scale,
+                r = tint[1] * dim,
+                g = tint[2] * dim,
+                b = tint[3] * dim,
+                a = opacity,
+            })
+        end
+    }
+end
+
+function DayState:_drawVisibleTileOutline(entry)
+    if not entry.visible then
+        return
+    end
+
+    local sx, sy = Iso.tileToScreen(entry.tx, entry.ty)
+    love.graphics.setColor(0, 0, 0, 0.12)
+    love.graphics.polygon("line",
+        sx, sy,
+        sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
+        sx, sy + Iso.TILE_H,
+        sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5
+    )
+end
+
+function DayState:_drawTerrain(drawList, worldTime, entityDrawList)
+    for _, entry in ipairs(drawList) do
+        local dim = entry.visible and 1 or 0.5
+        local renderData = Tile.getRenderData(entry.t, entry.tx, entry.ty, worldTime)
+
+        self:_drawTileGround(entry, renderData, dim)
+        self:_queueTileOverlay(entry, renderData, dim, entityDrawList)
+        self:_drawVisibleTileOutline(entry)
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function DayState:_queueVisibleBuildingDraws(entityDrawList)
     for _, building in ipairs(self.buildings:getAll()) do
         if self.fog:getState(building.tx, building.ty) ~= "hidden" then
             entityDrawList[#entityDrawList + 1] = {
@@ -435,13 +453,18 @@ function DayState:draw()
             }
         end
     end
+end
 
+function DayState:_shouldDrawNode(node, x1, y1, x2, y2)
+    return node:isReady()
+        and node.tx >= x1 and node.tx <= x2
+        and node.ty >= y1 and node.ty <= y2
+        and self.fog:isVisible(node.tx, node.ty)
+end
+
+function DayState:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
     for _, node in pairs(self.nodes:getAll()) do
-        if node:isReady()
-            and node.tx >= x1 and node.tx <= x2
-            and node.ty >= y1 and node.ty <= y2
-            and self.fog:isVisible(node.tx, node.ty)
-        then
+        if self:_shouldDrawNode(node, x1, y1, x2, y2) then
             local _, sy = Iso.tileToScreen(node.tx, node.ty)
             entityDrawList[#entityDrawList + 1] = {
                 sy = sy,
@@ -452,21 +475,31 @@ function DayState:draw()
             }
         end
     end
+end
 
-    if self.fog:getState(self.depot.tx, self.depot.ty) ~= "hidden" then
-        local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
-        entityDrawList[#entityDrawList + 1] = {
-            sy = depotSy,
-            order = 40,
-            draw = function()
-                self.depot:draw()
-                if self.depot:isNearby(self.player.tx, self.player.ty) then
-                    self.depot:drawNearbyHint()
-                end
-            end
-        }
+function DayState:_drawDepot()
+    self.depot:draw()
+    if self.depot:isNearby(self.player.tx, self.player.ty) then
+        self.depot:drawNearbyHint()
+    end
+end
+
+function DayState:_queueDepotDraw(entityDrawList)
+    if self.fog:getState(self.depot.tx, self.depot.ty) == "hidden" then
+        return
     end
 
+    local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
+    entityDrawList[#entityDrawList + 1] = {
+        sy = depotSy,
+        order = 40,
+        draw = function()
+            self:_drawDepot()
+        end
+    }
+end
+
+function DayState:_queuePlayerDraw(entityDrawList)
     local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
     self.playerCharacter.position.x = psx
     self.playerCharacter.position.y = psy + 2
@@ -477,17 +510,32 @@ function DayState:draw()
             self.playerCharacter:draw()
         end
     }
+end
 
-    table.sort(entityDrawList, function(a, b)
-        if a.sy == b.sy then
-            return (a.order or 0) < (b.order or 0)
-        end
-        return a.sy < b.sy
-    end)
+function DayState:_sortAndDrawEntities(entityDrawList)
+    table.sort(entityDrawList, compareEntityDrawEntries)
 
     for _, entry in ipairs(entityDrawList) do
         entry.draw()
     end
+end
+
+function DayState:draw()
+    love.graphics.clear(0.50, 0.70, 0.90, 1)
+
+    self.camera:apply()
+
+    local x1, y1, x2, y2 = self:_visibleTileRect()
+    local drawList = self:_buildDrawList(x1, y1, x2, y2)
+    local worldTime = love.timer.getTime()
+    local entityDrawList = {}
+
+    self:_drawTerrain(drawList, worldTime, entityDrawList)
+    self:_queueVisibleBuildingDraws(entityDrawList)
+    self:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
+    self:_queueDepotDraw(entityDrawList)
+    self:_queuePlayerDraw(entityDrawList)
+    self:_sortAndDrawEntities(entityDrawList)
 
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
     self.harvest:draw()
