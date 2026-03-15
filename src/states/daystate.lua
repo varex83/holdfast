@@ -57,12 +57,17 @@ function DayState:update(dt)
         return
     end
 
-    -- Movement via input manager (keyboard + gamepad)
-    local dx, dy = self.game.input:getMoveVector()
+    -- Movement via input manager (keyboard + gamepad).
+    -- getMoveVector() returns screen-space axes: right=+sdx, down=+sdy.
+    -- Convert to isometric tile-space: dtx = sdx + sdy, dty = -sdx + sdy.
+    local sdx, sdy = self.game.input:getMoveVector()
+    local dx = sdx + sdy
+    local dy = -sdx + sdy
 
     if dx ~= 0 or dy ~= 0 then
-        self.player.tx = self.player.tx + dx * self.player.speed * dt
-        self.player.ty = self.player.ty + dy * self.player.speed * dt
+        local len = math.sqrt(dx * dx + dy * dy)
+        self.player.tx = self.player.tx + (dx / len) * self.player.speed * dt
+        self.player.ty = self.player.ty + (dy / len) * self.player.speed * dt
     end
 
     -- Right stick pans camera; otherwise camera follows player
