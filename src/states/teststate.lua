@@ -9,6 +9,7 @@ local Projectile = require('src.combat.projectile')
 local EventBus = require('src.core.eventbus')
 local Constants = require('data.constants')
 local World = require('src.ecs.world')
+local Pathfinding = require('src.ai.pathfinding')
 
 local TestState = Class:extend()
 
@@ -17,7 +18,7 @@ function TestState:new(game)
     self.name = 'test'
 end
 
-function TestState:enter()
+function TestState:enter(selectedClass)
     print("=== PHASE 1 TEST STATE ===")
     print("Controls:")
     print("  WASD / Left Stick - Move")
@@ -30,6 +31,14 @@ function TestState:enter()
     print("")
 
     self.world = World()
+    self.enemyPathfinding = Pathfinding.new({
+        originX = -96,
+        originY = -96,
+        width = 24,
+        height = 18,
+        cellSize = 64
+    })
+    self:buildPathfindingArena()
 
     -- Combat manager
     self.combatManager = CombatManager.new(self.world, EventBus)
@@ -42,11 +51,14 @@ function TestState:enter()
     local Camera = require("src.core.camera")
     local sw, sh = love.graphics.getDimensions()
     self.camera = Camera(sw, sh)
+    self.camera:setZoom(1.15)
 
-    -- Create player character (Warrior by default)
-    self.player = Character.new(Constants.CLASS.WARRIOR, 400, 300)
-    self.player:setInputManager(self.game.input)
-    self.player:setWorld(self.world)
+    local initialClass = selectedClass or Constants.CLASS.WARRIOR
+
+    -- Create player character
+    local playerSpawnX, playerSpawnY = self:findWalkableSpawnPosition(400, 300)
+    self.player = Character.new(initialClass, playerSpawnX, playerSpawnY)
+    self:configureDemoCharacter(self.player, false)
     self.world:addEntity(self.player.entity)
 
     -- Test enemies (for combat testing)
@@ -57,13 +69,15 @@ function TestState:enter()
 
     -- Debug mode
     self.debugMode = false
+    self.notice = {alpha = 0, y = 52}
 
     -- Attack cooldown display
     self.lastAttackTime = 0
     self.attackCooldown = 1.0
 
     -- UI info
-    self.currentClass = "Warrior"
+    self.currentClass = self:getClassLabel(initialClass)
+    self:showNotice(self.currentClass)
 
     -- Subscribe to combat events
     EventBus.on(Constants.EVENTS.ENTITY_DIED, function(data)
@@ -81,6 +95,20 @@ function TestState:enter()
         print(string.format("Entity %d took %d damage (%d/%d HP)",
             data.entity.id, data.damage, data.currentHp, data.maxHp))
     end)
+end
+
+function TestState:getClassLabel(classType)
+    if classType == Constants.CLASS.WARRIOR then
+        return "Warrior"
+    elseif classType == Constants.CLASS.ARCHER then
+        return "Archer"
+    elseif classType == Constants.CLASS.ENGINEER then
+        return "Engineer"
+    elseif classType == Constants.CLASS.SCOUT then
+        return "Scout"
+    end
+
+    return "Warrior"
 end
 
 function TestState:update(dt)
@@ -126,6 +154,7 @@ function TestState:update(dt)
 
     -- Update enemies
     for _, enemy in ipairs(self.enemies) do
+        self:updateEnemyAI(enemy, dt)
         enemy:update(dt)
     end
 
@@ -136,11 +165,7 @@ function TestState:update(dt)
     self.world:update(dt)
 
     -- Update camera to follow player
-    local targetX = self.player.position.x
-    local targetY = self.player.position.y
-    local lerpFactor = 5 * dt  -- Smooth camera follow
-    self.camera.x = self.camera.x + (targetX - self.camera.x) * lerpFactor
-    self.camera.y = self.camera.y + (targetY - self.camera.y) * lerpFactor
+    self.camera:follow(self.player.position.x, self.player.position.y)
 
     -- Update camera
     self.camera:update(dt)
@@ -152,13 +177,15 @@ function TestState:draw()
 
     -- Draw grid
     self:drawGrid()
+    self.enemyPathfinding:drawDebug()
+    self:drawArenaObstacles()
 
     -- Draw player
-    self:drawCharacter(self.player, {r=0.3, g=0.6, b=0.9})
+    self:drawCharacter(self.player)
 
     -- Draw enemies
     for _, enemy in ipairs(self.enemies) do
-        self:drawCharacter(enemy, {r=0.9, g=0.3, b=0.3})
+        self:drawCharacter(enemy)
     end
 
     -- Draw projectiles
@@ -196,7 +223,7 @@ function TestState:drawGrid()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
-function TestState:drawCharacter(character, color)
+function TestState:drawCharacter(character)
     if not character:isAlive() then
         return
     end
@@ -204,9 +231,7 @@ function TestState:drawCharacter(character, color)
     local pos = character:getPosition()
     local size = 32
 
-    -- Draw body
-    love.graphics.setColor(color.r, color.g, color.b, 1)
-    love.graphics.rectangle('fill', pos.x - size/2, pos.y - size/2, size, size)
+    character:draw()
 
     -- Draw health bar
     local health = character.health
@@ -268,6 +293,8 @@ function TestState:drawUI()
     y = y + 20
 
     love.graphics.print(string.format("Enemies: %d", #self.enemies), padding + 10, y)
+    y = y + 20
+    love.graphics.print("Pathfinding: jumper A* demo", padding + 10, y)
 
     -- Controls
     love.graphics.setColor(0, 0, 0, 0.7)
@@ -285,35 +312,250 @@ function TestState:drawUI()
     y = y + 20
     love.graphics.print("ESC - Menu", padding + 10, y)
 
+    if self.notice.alpha > 0.01 then
+        love.graphics.setColor(0, 0, 0, 0.65 * self.notice.alpha)
+        love.graphics.rectangle('fill', love.graphics.getWidth() * 0.5 - 140, self.notice.y - 8, 280, 38)
+        love.graphics.setColor(1, 1, 1, self.notice.alpha)
+        love.graphics.printf(self.notice.text, 0, self.notice.y, love.graphics.getWidth(), 'center')
+    end
+
     love.graphics.setColor(1, 1, 1, 1)
+end
+
+function TestState:buildPathfindingArena()
+    self.arenaObstacles = {
+        {col = 8, row = 3, width = 1, height = 3},
+        {col = 8, row = 7, width = 1, height = 4},
+        {col = 15, row = 7, width = 1, height = 4},
+        {col = 15, row = 12, width = 1, height = 3},
+        {col = 10, row = 5, width = 4, height = 1},
+        {col = 11, row = 13, width = 2, height = 1},
+        {col = 14, row = 13, width = 1, height = 1}
+    }
+
+    for _, obstacle in ipairs(self.arenaObstacles) do
+        self.enemyPathfinding:setBlockedRect(obstacle.col, obstacle.row, obstacle.width, obstacle.height, true)
+    end
+end
+
+function TestState:drawArenaObstacles()
+    love.graphics.setColor(0.28, 0.16, 0.12, 0.9)
+    for _, obstacle in ipairs(self.arenaObstacles) do
+        local x, y = self.enemyPathfinding:gridToWorld(obstacle.col, obstacle.row)
+        local drawX = x - self.enemyPathfinding.cellSize * 0.5
+        local drawY = y - self.enemyPathfinding.cellSize * 0.5
+        love.graphics.rectangle(
+            'fill',
+            drawX,
+            drawY,
+            obstacle.width * self.enemyPathfinding.cellSize,
+            obstacle.height * self.enemyPathfinding.cellSize
+        )
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
+function TestState:updateEnemyAI(enemy, dt)
+    if not enemy:isAlive() then
+        return
+    end
+
+    local targetX, targetY = self:getEnemyTargetPosition(enemy)
+    local toPlayerX = self.player.position.x - enemy.position.x
+    local toPlayerY = self.player.position.y - enemy.position.y
+    local distanceToPlayer = math.sqrt(toPlayerX * toPlayerX + toPlayerY * toPlayerY)
+    local meleeRange = enemy.stats:getAttackRange() + 8
+
+    if distanceToPlayer <= meleeRange then
+        enemy:setDesiredMovement(0, 0)
+
+        if distanceToPlayer > 0 then
+            enemy.facingDirection = math.atan2(toPlayerY, toPlayerX)
+        end
+
+        self:enemyAttack(enemy, distanceToPlayer)
+        return
+    end
+
+    enemy.aiTimer = (enemy.aiTimer or 0) - dt
+
+    if enemy.aiTimer <= 0 then
+        enemy.aiTimer = 0.35
+        enemy.path = self.enemyPathfinding:findPathWorld(
+            enemy.position.x,
+            enemy.position.y,
+            targetX,
+            targetY
+        ) or {}
+        enemy.pathIndex = 2
+    end
+
+    local waypoint = enemy.path and enemy.path[enemy.pathIndex]
+    if not waypoint then
+        enemy:setDesiredMovement(0, 0)
+        return
+    end
+
+    local dx = waypoint.x - enemy.position.x
+    local dy = waypoint.y - enemy.position.y
+    local distance = math.sqrt(dx * dx + dy * dy)
+
+    if distance < 8 then
+        enemy.pathIndex = enemy.pathIndex + 1
+        waypoint = enemy.path[enemy.pathIndex]
+        if not waypoint then
+            enemy:setDesiredMovement(0, 0)
+            return
+        end
+        dx = waypoint.x - enemy.position.x
+        dy = waypoint.y - enemy.position.y
+    end
+
+    enemy:setDesiredMovement(dx, dy)
+end
+
+function TestState:getEnemyTargetPosition(enemy)
+    local slotRadius = 36
+    local slotCount = math.max(#self.enemies, 1)
+    local slotIndex = ((enemy.entity.id - 1) % slotCount)
+    local orbitSpeed = 0.8
+    local baseAngle = (slotIndex / slotCount) * math.pi * 2
+    local orbitAngle = baseAngle + love.timer.getTime() * orbitSpeed
+
+    local targetX = self.player.position.x + math.cos(orbitAngle) * slotRadius
+    local targetY = self.player.position.y + math.sin(orbitAngle) * slotRadius
+    local resolvedX, resolvedY = self:findWalkableSpawnPosition(targetX, targetY)
+    return resolvedX, resolvedY
+end
+
+function TestState:enemyAttack(enemy, distanceToPlayer)
+    if not enemy.stats:canAttack() or not self.combatManager:canAttack(enemy.entity) then
+        return
+    end
+
+    local facingDir = enemy.facingDirection
+    local range = enemy.stats:getAttackRange()
+    local offsetDistance = math.min(range * 0.5, distanceToPlayer * 0.5)
+    local offsetX = math.cos(facingDir) * offsetDistance
+    local offsetY = math.sin(facingDir) * offsetDistance
+
+    local attackId = self.combatManager:registerAttack(enemy.entity, {
+        range = range,
+        damage = enemy.stats:getAttack(),
+        cooldown = 1.0 / math.max(enemy.stats:getAttackSpeed(), 0.1),
+        hitboxOffset = {x = offsetX, y = offsetY},
+        hitboxSize = {width = range, height = math.max(24, range * 0.7)},
+        duration = 0.25,
+        knockback = 40,
+        hitLimit = 1
+    })
+
+    if attackId then
+        enemy:triggerAttackAnimation()
+    end
+end
+
+function TestState:configureDemoCharacter(character, isEnemy)
+    character:setInputManager(isEnemy and nil or self.game.input)
+    character:setWorld(self.world)
+    character:setCollisionChecker(function(instance, x, y)
+        return self:canCharacterMoveTo(instance, x, y)
+    end)
+    character.hitbox.width = 24
+    character.hitbox.height = 24
+    character.visualScale = isEnemy and 1.1 or 1.15
+end
+
+function TestState:canCharacterMoveTo(character, x, y)
+    local hitbox = character.hitbox
+    if not hitbox then
+        return true
+    end
+
+    local testPosition = {
+        x = x,
+        y = y
+    }
+    local bounds = hitbox:getBounds(testPosition)
+
+    local inset = 6
+    local samplePoints = {
+        {x = bounds.left + inset, y = bounds.top + inset},
+        {x = bounds.right - inset, y = bounds.top + inset},
+        {x = bounds.left + inset, y = bounds.bottom - inset},
+        {x = bounds.right - inset, y = bounds.bottom - inset},
+        {x = bounds.centerX, y = bounds.centerY}
+    }
+
+    for _, point in ipairs(samplePoints) do
+        local col, row = self.enemyPathfinding:worldToGrid(point.x, point.y)
+        if not self.enemyPathfinding:isWalkable(col, row) then
+            return false
+        end
+    end
+
+    return true
+end
+
+function TestState:findWalkableSpawnPosition(x, y)
+    local col, row = self.enemyPathfinding:worldToGrid(x, y)
+    if self.enemyPathfinding:isWalkable(col, row) then
+        return x, y
+    end
+
+    for radius = 1, 4 do
+        for dy = -radius, radius do
+            for dx = -radius, radius do
+                local testCol = col + dx
+                local testRow = row + dy
+                if self.enemyPathfinding:isWalkable(testCol, testRow) then
+                    return self.enemyPathfinding:gridToWorld(testCol, testRow)
+                end
+            end
+        end
+    end
+
+    return x, y
+end
+
+function TestState:showNotice(text)
+    self.notice.text = text
+    self.notice.alpha = 0
+    self.notice.y = 36
+    self.game.tweens:stop(self.notice)
+    self.game.tweens:to(self.notice, 0.18, {alpha = 1, y = 52}):ease("quadout"):oncomplete(function()
+        self.game.tweens:to(self.notice, 0.35, {alpha = 0, y = 58}):delay(0.8)
+    end)
+end
+
+function TestState:pulseCameraZoom()
+    self.game.tweens:stop(self.camera)
+    local baseZoom = self.camera.zoom
+    self.game.tweens:to(self.camera, 0.12, {zoom = math.min(4.0, baseZoom + 0.08)}):ease("quadout"):oncomplete(function()
+        self.game.tweens:to(self.camera, 0.18, {zoom = baseZoom}):ease("quadinout")
+    end)
 end
 
 function TestState:switchClass(classType)
     local pos = self.player:getPosition()
+    local spawnX, spawnY = self:findWalkableSpawnPosition(pos.x, pos.y)
 
     -- Remove old player
     self.world:removeEntity(self.player.entity)
 
     -- Create new player with new class
-    self.player = Character.new(classType, pos.x, pos.y)
-    self.player:setInputManager(self.game.input)
-    self.player:setWorld(self.world)
+    self.player = Character.new(classType, spawnX, spawnY)
+    self:configureDemoCharacter(self.player, false)
     self.world:addEntity(self.player.entity)
 
     -- Update camera position
     self.camera:moveTo(self.player.position.x, self.player.position.y)
 
     -- Update class name
-    if classType == Constants.CLASS.WARRIOR then
-        self.currentClass = "Warrior"
-    elseif classType == Constants.CLASS.ARCHER then
-        self.currentClass = "Archer"
-    elseif classType == Constants.CLASS.ENGINEER then
-        self.currentClass = "Engineer"
-    elseif classType == Constants.CLASS.SCOUT then
-        self.currentClass = "Scout"
-    end
+    self.currentClass = self:getClassLabel(classType)
 
+    self:showNotice("Class: " .. self.currentClass)
+    self:pulseCameraZoom()
     print("Switched to " .. self.currentClass)
 end
 
@@ -324,12 +566,17 @@ function TestState:spawnTestEnemy()
     local distance = 200
     local x = playerPos.x + math.cos(angle) * distance
     local y = playerPos.y + math.sin(angle) * distance
+    x, y = self:findWalkableSpawnPosition(x, y)
 
-    local enemy = Character.new(Constants.CLASS.WARRIOR, x, y)
+    local enemy = Character.new(Constants.CLASS.WARRIOR, x, y, {appearance = "orc"})
     enemy.hitbox.team = 'enemy'
     enemy.sprite.r = 0.9
     enemy.sprite.g = 0.3
     enemy.sprite.b = 0.3
+    enemy.aiTimer = 0
+    enemy.path = {}
+    enemy.pathIndex = 1
+    self:configureDemoCharacter(enemy, true)
     self.world:addEntity(enemy.entity)
 
     table.insert(self.enemies, enemy)
@@ -372,6 +619,8 @@ function TestState:playerAttack()
 
     if attackId then
         print("Attack!", attackId)
+        self.player:triggerAttackAnimation()
+        self:pulseCameraZoom()
 
         -- For ranged classes, spawn projectile
         if self.player.classType == Constants.CLASS.ARCHER then
@@ -429,21 +678,29 @@ function TestState:playerAbility()
     elseif classType == Constants.CLASS.SCOUT then
         -- Cloak - invulnerability
         self.player.health:setInvulnerable(3.0)
+        self:showNotice("Scout Cloak")
         print("Cloaked for 3 seconds!")
 
     elseif classType == Constants.CLASS.ENGINEER then
         -- Heal
         self.player:heal(20)
+        self:showNotice("Engineer Repair Burst")
         print("Healed 20 HP!")
     end
 end
 
 function TestState:keypressed(key, scancode, isrepeat)
-    -- Track key presses for wasPressed function
-    if not self.pressedKeys then
-        self.pressedKeys = {}
+    if key == "=" or key == "+" then
+        self.camera:adjustZoom(0.1)
+    elseif key == "-" then
+        self.camera:adjustZoom(-0.1)
+    elseif key == "0" then
+        self.camera:setZoom(1.15)
     end
-    self.pressedKeys[key] = true
+end
+
+function TestState:wheelmoved(x, y)
+    self.camera:adjustZoom(y * 0.1)
 end
 
 function TestState:exit()

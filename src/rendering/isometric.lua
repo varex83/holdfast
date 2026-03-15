@@ -6,6 +6,7 @@ local Iso = {}
 
 local TILE_W = 64
 local TILE_H = 32
+local meshCache = {}
 
 -- Tile (integer grid) → screen pixel offset (relative to world origin)
 -- The origin tile (0,0) maps to screen (0,0).
@@ -63,6 +64,68 @@ function Iso.drawSprite(image, tx, ty, ox, oy)
     local iw, ih = image:getDimensions()
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(image, sx - iw * 0.5 + ox, sy - ih * 0.5 + oy)
+end
+
+local function meshKey(image, quad)
+    local qx, qy, qw, qh = quad:getViewport()
+    return table.concat({tostring(image), qx, qy, qw, qh}, ":")
+end
+
+local function getDiamondMesh(image, quad)
+    local key = meshKey(image, quad)
+    if meshCache[key] then
+        return meshCache[key]
+    end
+
+    local iw, ih = image:getDimensions()
+    local qx, qy, qw, qh = quad:getViewport()
+    local u0 = qx / iw
+    local v0 = qy / ih
+    local u1 = (qx + qw) / iw
+    local v1 = (qy + qh) / ih
+    local um = (u0 + u1) * 0.5
+    local vm = (v0 + v1) * 0.5
+
+    local mesh = love.graphics.newMesh({
+        {0, 0, um, v0},
+        {TILE_W * 0.5, TILE_H * 0.5, u1, vm},
+        {0, TILE_H, um, v1},
+        {-TILE_W * 0.5, TILE_H * 0.5, u0, vm},
+    }, "fan", "static")
+    mesh:setTexture(image)
+    meshCache[key] = mesh
+
+    return mesh
+end
+
+function Iso.drawTexturedTile(image, quad, tx, ty, r, g, b, a)
+    local sx, sy = Iso.tileToScreen(tx, ty)
+    love.graphics.setColor(r or 1, g or 1, b or 1, a or 1)
+    love.graphics.draw(getDiamondMesh(image, quad), sx, sy)
+end
+
+function Iso.drawProp(image, tx, ty, opts)
+    opts = opts or {}
+
+    local sx, sy = Iso.tileToScreen(tx, ty)
+    local iw, ih = image:getDimensions()
+    local scale = opts.scale or 1
+    local ox = opts.ox or 0
+    local oy = opts.oy or 0
+    local anchorX = opts.anchorX or (iw * 0.5)
+    local anchorY = opts.anchorY or ih
+
+    love.graphics.setColor(opts.r or 1, opts.g or 1, opts.b or 1, opts.a or 1)
+    love.graphics.draw(
+        image,
+        sx + ox,
+        sy + TILE_H * 0.5 + oy,
+        0,
+        scale,
+        scale,
+        anchorX,
+        anchorY
+    )
 end
 
 -- Highlight the tile under the mouse cursor (useful for build ghost previews).

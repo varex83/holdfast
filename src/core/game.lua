@@ -7,9 +7,11 @@ local StateMachine = require("src.core.statemachine")
 local World = require("src.ecs.world")
 local Debug = require("src.ui.debug")
 local InputManager = require("src.input.inputmanager")
+local Flux = require("lib.flux")
 
 -- States
 local MenuState = require("src.states.menustate")
+local SettingsState = require("src.states.settingsstate")
 local DayState = require("src.states.daystate")
 local NightState = require("src.states.nightstate")
 local GameOverState = require("src.states.gameoverstate")
@@ -28,6 +30,7 @@ function Game:new()
     self.world = World()
     self.debug = Debug.new(self)
     self.input = InputManager.new()
+    self.tweens = Flux.group()
 
     -- Game state
     self.dayCounter = 0
@@ -40,12 +43,14 @@ function Game:load()
 
     -- Initialize states
     local menuState = MenuState(self)
+    local settingsState = SettingsState(self)
     local dayState = DayState(self)
     local nightState = NightState(self)
     local gameOverState = GameOverState(self)
     local testState = TestState(self)
 
     self.stateMachine:addState("menu", menuState)
+    self.stateMachine:addState("settings", settingsState)
     self.stateMachine:addState("day", dayState)
     self.stateMachine:addState("night", nightState)
     self.stateMachine:addState("gameover", gameOverState)
@@ -79,6 +84,9 @@ end
 function Game:update(dt)
     -- Update debug
     self.debug:update(dt)
+
+    -- Update active tweens
+    self.tweens:update(dt)
 
     -- Update state machine
     self.stateMachine:update(dt)

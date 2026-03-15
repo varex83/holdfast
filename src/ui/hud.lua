@@ -1,9 +1,9 @@
 -- HUD
 -- Draws the in-game heads-up display:
---   • Day counter + countdown timer
---   • Player inventory (items + weight bar)
---   • Supply depot indicator when nearby
---   • Control hints
+--   вЂў Day counter + countdown timer
+--   вЂў Player inventory (items + weight bar)
+--   вЂў Supply depot indicator when nearby
+--   вЂў Control hints
 
 local Class     = require("lib.class")
 local Resources = require("data.resources")
@@ -22,7 +22,7 @@ function HUD:new()
     self._fontSm = love.graphics.newFont(11)
 end
 
--- ─── Public draw entry point ─────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Public draw entry point в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:draw(game, inventory, depot, player, ghost)
     local sw = love.graphics.getWidth()
@@ -41,7 +41,7 @@ function HUD:draw(game, inventory, depot, player, ghost)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- ─── Top bar: day + timer ────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Top bar: day + timer в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawTopBar(game, sw)
     love.graphics.setFont(self._fontLg)
@@ -58,7 +58,7 @@ function HUD:_drawTopBar(game, sw)
     love.graphics.print(timeStr, sw - tw - PAD, PAD + 4)
 end
 
--- ─── Inventory panel (bottom-left) ───────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Inventory panel (bottom-left) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawInventory(inventory, sh)
     if not inventory then return end
@@ -105,7 +105,7 @@ function HUD:_drawInventory(inventory, sh)
     end
 end
 
--- ─── Depot stock panel (right side, shown when nearby) ───────────────────────
+-- в”Ђв”Ђв”Ђ Depot stock panel (right side, shown when nearby) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawDepotStock(depot, sw)
     local stock = depot:getStock()
@@ -142,7 +142,7 @@ function HUD:_drawDepotStock(depot, sw)
     end
 end
 
--- ─── Build mode banner ───────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Build mode banner в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawBuildMode(ghost, sw, sh)
     local Buildings = require("data.buildings")
@@ -165,7 +165,7 @@ function HUD:_drawBuildMode(ghost, sw, sh)
     love.graphics.print(text, (sw - tw) * 0.5, sh - 50)
 end
 
--- ─── Control hints (bottom) ──────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Control hints (bottom) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawControls(input, sh, sw, ghost)
     if ghost and ghost:isActive() then return end  -- banner replaces hints in build mode

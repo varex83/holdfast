@@ -256,9 +256,9 @@ luarocks install bump
 
 ### Should Consider
 - **bump.lua** - For player/enemy/structure collision
-- **jumper** - For enemy pathfinding
-- **anim8** - For character sprite animations
-- **flux** - For UI tweening
+- **jumper** - Integrated via `src/ai/pathfinding.lua` for grid-based enemy routing
+- **anim8** - Integrated in `src/characters/character.lua` for sprite-sheet playback
+- **flux** - Integrated in `src/core/game.lua` and `src/states/teststate.lua` for UI/camera tweens
 - **lume** - General utilities
 - **dkjson** - Save/load system
 - **lurker** - Hot-reload during development
