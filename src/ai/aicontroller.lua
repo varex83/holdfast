@@ -20,20 +20,32 @@ function AIController.new(config)
     return self
 end
 
+function AIController:_isIdling(actor, context)
+    if not actor:isAlive() then return true end
+    if actor.stunnedUntil and actor.stunnedUntil > love.timer.getTime() then return true end
+    if context.player and context.player.cloak and context.player.cloak.active then return true end
+    return false
+end
+
+function AIController:_handleCombatState(actor, target, context, dx, dy, distance)
+    local attackRange = actor.stats:getAttackRange() + 8
+    if actor.health and actor.health.currentHp <= actor.health.maxHp * 0.2 then
+        actor.aiState = AIController.STATE.FLEE
+        actor:setDesiredMovement(-dx, -dy)
+        return true
+    end
+    if distance <= attackRange then
+        actor.aiState = AIController.STATE.ATTACK
+        actor:setDesiredMovement(0, 0)
+        actor.facingDirection = math.atan2(dy, dx)
+        if self.attack then self.attack(actor, target, context) end
+        return true
+    end
+    return false
+end
+
 function AIController:update(actor, context, dt)
-    if not actor:isAlive() then
-        actor.aiState = AIController.STATE.IDLE
-        actor:setDesiredMovement(0, 0)
-        return
-    end
-
-    if actor.stunnedUntil and actor.stunnedUntil > love.timer.getTime() then
-        actor.aiState = AIController.STATE.IDLE
-        actor:setDesiredMovement(0, 0)
-        return
-    end
-
-    if context.player and context.player.cloak and context.player.cloak.active then
+    if self:_isIdling(actor, context) then
         actor.aiState = AIController.STATE.IDLE
         actor:setDesiredMovement(0, 0)
         return
@@ -49,23 +61,7 @@ function AIController:update(actor, context, dt)
     local dx = target.x - actor.position.x
     local dy = target.y - actor.position.y
     local distance = math.sqrt(dx * dx + dy * dy)
-    local attackRange = actor.stats:getAttackRange() + 8
-
-    if actor.health and actor.health.currentHp <= actor.health.maxHp * 0.2 then
-        actor.aiState = AIController.STATE.FLEE
-        actor:setDesiredMovement(-dx, -dy)
-        return
-    end
-
-    if distance <= attackRange then
-        actor.aiState = AIController.STATE.ATTACK
-        actor:setDesiredMovement(0, 0)
-        actor.facingDirection = math.atan2(dy, dx)
-        if self.attack then
-            self.attack(actor, target, context)
-        end
-        return
-    end
+    if self:_handleCombatState(actor, target, context, dx, dy, distance) then return end
 
     actor.aiState = AIController.STATE.SEEK
     actor.aiTimer = (actor.aiTimer or 0) - dt
@@ -73,10 +69,7 @@ function AIController:update(actor, context, dt)
     if actor.aiTimer <= 0 then
         actor.aiTimer = self.pathRefresh
         actor.path = self.pathfinding and self.pathfinding:findPathWorld(
-            actor.position.x,
-            actor.position.y,
-            target.x,
-            target.y
+            actor.position.x, actor.position.y, target.x, target.y
         ) or nil
         actor.pathIndex = 2
     end

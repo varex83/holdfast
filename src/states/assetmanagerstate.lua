@@ -14,6 +14,15 @@ local TAB_LABELS = {
 }
 local TILE_COLLISION_SHAPES = { "none", "circle", "box" }
 
+local KEY_SIMPLE_ACTIONS = {
+    r   = function(s) s:reload() end,
+    ["["] = function(s) s:adjustSelectedField(-1) end,
+    ["]"] = function(s) s:adjustSelectedField(1) end,
+    ["1"] = function(s) s.previewAnimationState = "idle" end,
+    ["2"] = function(s) s.previewAnimationState = "walk" end,
+    ["3"] = function(s) s.previewAnimationState = "attack" end,
+}
+
 local function clamp(value, minValue, maxValue)
     if value < minValue then
         return minValue
@@ -361,10 +370,7 @@ function AssetManagerState:drawAnimationPreview(panel)
 
     local stateDef = setDef.states[self.previewAnimationState] or setDef.states.idle or setDef.states.walk or setDef.states.attack
     if not stateDef then
-        for _, candidate in pairs(setDef.states or {}) do
-            stateDef = candidate
-            break
-        end
+        _, stateDef = next(setDef.states or {})
     end
     if not stateDef then
         return
@@ -419,6 +425,23 @@ function AssetManagerState:drawAnimationPreview(panel)
     love.graphics.print(setId, panel.x + 18, panel.y + 38)
 end
 
+function AssetManagerState:_drawTileOverlay(renderData, cx, cy)
+    if not (renderData and renderData.overlay) then return end
+    local ov = renderData.overlay
+    local tint = ov.tint or {1, 1, 1}
+    local qw = ov.quad and select(3, ov.quad:getViewport()) or ov.image:getWidth()
+    local qh = ov.quad and select(4, ov.quad:getViewport()) or ov.image:getHeight()
+    love.graphics.setColor(tint[1], tint[2], tint[3], ov.opacity or 1)
+    love.graphics.draw(
+        ov.image, ov.quad,
+        cx + (ov.ox or 0),
+        cy + Iso.TILE_H * 0.5 + (ov.oy or 0),
+        0, ov.scale or 1, ov.scale or 1,
+        (ov.anchorX or qw * 0.5),
+        (ov.anchorY or qh)
+    )
+end
+
 function AssetManagerState:drawTilePreview(panel)
     local tileId, tileDef = self:getCurrentTile()
     if not tileId then
@@ -447,21 +470,7 @@ function AssetManagerState:drawTilePreview(panel)
         love.graphics.pop()
     end
 
-    if renderData and renderData.overlay then
-        local tint = renderData.overlay.tint or { 1, 1, 1 }
-        love.graphics.setColor(tint[1], tint[2], tint[3], renderData.overlay.opacity or 1)
-        love.graphics.draw(
-            renderData.overlay.image,
-            renderData.overlay.quad,
-            cx + (renderData.overlay.ox or 0),
-            cy + Iso.TILE_H * 0.5 + (renderData.overlay.oy or 0),
-            0,
-            renderData.overlay.scale or 1,
-            renderData.overlay.scale or 1,
-            renderData.overlay.anchorX or ((renderData.overlay.quad and select(3, renderData.overlay.quad:getViewport())) or renderData.overlay.image:getWidth()) * 0.5,
-            renderData.overlay.anchorY or ((renderData.overlay.quad and select(4, renderData.overlay.quad:getViewport())) or renderData.overlay.image:getHeight())
-        )
-    end
+    self:_drawTileOverlay(renderData, cx, cy)
 
     local collision = tileDef.collision or {}
     self.ui.previewBounds = {
@@ -737,80 +746,87 @@ function AssetManagerState:getCurrentTilemap()
     return id, self.documents.tilemaps.tilemaps[id]
 end
 
+function AssetManagerState:_buildTileFields(tileDef)
+    tileDef.collision = tileDef.collision or { shape = "none" }
+    tileDef.overlay = type(tileDef.overlay) == "table" and tileDef.overlay or {}
+    local col = tileDef.collision
+    local ov  = tileDef.overlay
+    return {
+        self:booleanField("Walkable", function() return tileDef.walkable end, function(v) tileDef.walkable = v end),
+        self:cycleField("Collision Shape", function() return col.shape or "none" end, function(v)
+            col.shape = v
+            if v == "circle" then
+                col.radius  = col.radius  or 0.12
+                col.offsetX = col.offsetX or 0
+                col.offsetY = col.offsetY or 0.08
+            elseif v == "box" then
+                col.width   = col.width   or 0.24
+                col.height  = col.height  or 0.20
+                col.offsetX = col.offsetX or 0
+                col.offsetY = col.offsetY or 0.08
+            end
+        end, TILE_COLLISION_SHAPES),
+        self:numberField("Collision Radius",   function() return col.radius  end, function(v) col.radius  = clamp(v,0.02,1) end, 0.01, 2),
+        self:numberField("Collision Width",    function() return col.width   end, function(v) col.width   = clamp(v,0.02,1) end, 0.01, 2),
+        self:numberField("Collision Height",   function() return col.height  end, function(v) col.height  = clamp(v,0.02,1) end, 0.01, 2),
+        self:numberField("Collision Offset X", function() return col.offsetX end, function(v) col.offsetX = clamp(v,-1,1)  end, 0.01, 2),
+        self:numberField("Collision Offset Y", function() return col.offsetY end, function(v) col.offsetY = clamp(v,-1,1)  end, 0.01, 2),
+        self:numberField("Overlay Scale",      function() return ov.scale    end, function(v) ov.scale    = clamp(v,0.1,8) end, 0.05, 2),
+        self:numberField("Overlay Offset X",   function() return ov.ox       end, function(v) ov.ox       = clamp(v,-256,256) end, 1),
+        self:numberField("Overlay Offset Y",   function() return ov.oy       end, function(v) ov.oy       = clamp(v,-256,256) end, 1),
+    }
+end
+
+function AssetManagerState:_buildAnimationFields(setDef)
+    setDef.hitbox = setDef.hitbox or {}
+    local hb = setDef.hitbox
+    return {
+        self:numberField("Draw Origin X",  function() return setDef.drawOriginX end, function(v) setDef.drawOriginX = clamp(v,0,256) end, 1),
+        self:numberField("Draw Origin Y",  function() return setDef.drawOriginY end, function(v) setDef.drawOriginY = clamp(v,0,256) end, 1),
+        self:numberField("Draw Offset Y",  function() return setDef.drawOffsetY end, function(v) setDef.drawOffsetY = clamp(v,-128,128) end, 1),
+        self:numberField("Visual Scale",   function() return setDef.visualScale end, function(v) setDef.visualScale = clamp(v,0.25,8) end, 0.05, 2),
+        self:numberField("Hitbox Width",   function() return hb.width    end, function(v) hb.width    = clamp(v,1,256) end, 1),
+        self:numberField("Hitbox Height",  function() return hb.height   end, function(v) hb.height   = clamp(v,1,256) end, 1),
+        self:numberField("Hitbox Offset X",function() return hb.offsetX  end, function(v) hb.offsetX  = clamp(v,-128,128) end, 1),
+        self:numberField("Hitbox Offset Y",function() return hb.offsetY  end, function(v) hb.offsetY  = clamp(v,-128,128) end, 1),
+    }
+end
+
 function AssetManagerState:getEditableFields()
     if self.category == "images" then
         local _, def = self:getCurrentImage()
         return {
-            self:readOnlyField("Path", def and def.path or ""),
-            self:readOnlyField("Filter", def and def.filter or "default"),
+            self:readOnlyField("Path",       def and def.path   or ""),
+            self:readOnlyField("Filter",     def and def.filter or "default"),
             self:readOnlyField("Min Filter", def and def.minFilter or "-"),
             self:readOnlyField("Mag Filter", def and def.magFilter or "-"),
         }
     end
-
     if self.category == "atlases" then
         local _, def = self:getCurrentAtlas()
         return {
-            self:readOnlyField("Path", def and (def.path or def.image) or ""),
-            self:readOnlyField("Tile Width", tostring(def and def.tileWidth or "")),
-            self:readOnlyField("Tile Height", tostring(def and def.tileHeight or "")),
-            self:readOnlyField("Filter", def and def.filter or "default"),
+            self:readOnlyField("Path",         def and (def.path or def.image) or ""),
+            self:readOnlyField("Tile Width",   tostring(def and def.tileWidth  or "")),
+            self:readOnlyField("Tile Height",  tostring(def and def.tileHeight or "")),
+            self:readOnlyField("Filter",       def and def.filter or "default"),
         }
     end
-
     if self.category == "animations" then
         local _, setDef = self:getCurrentAnimationSet()
-        setDef.hitbox = setDef.hitbox or {}
-        return {
-            self:numberField("Draw Origin X", function() return setDef.drawOriginX end, function(v) setDef.drawOriginX = clamp(v, 0, 256) end, 1),
-            self:numberField("Draw Origin Y", function() return setDef.drawOriginY end, function(v) setDef.drawOriginY = clamp(v, 0, 256) end, 1),
-            self:numberField("Draw Offset Y", function() return setDef.drawOffsetY end, function(v) setDef.drawOffsetY = clamp(v, -128, 128) end, 1),
-            self:numberField("Visual Scale", function() return setDef.visualScale end, function(v) setDef.visualScale = clamp(v, 0.25, 8) end, 0.05, 2),
-            self:numberField("Hitbox Width", function() return setDef.hitbox.width end, function(v) setDef.hitbox.width = clamp(v, 1, 256) end, 1),
-            self:numberField("Hitbox Height", function() return setDef.hitbox.height end, function(v) setDef.hitbox.height = clamp(v, 1, 256) end, 1),
-            self:numberField("Hitbox Offset X", function() return setDef.hitbox.offsetX end, function(v) setDef.hitbox.offsetX = clamp(v, -128, 128) end, 1),
-            self:numberField("Hitbox Offset Y", function() return setDef.hitbox.offsetY end, function(v) setDef.hitbox.offsetY = clamp(v, -128, 128) end, 1),
-        }
+        return self:_buildAnimationFields(setDef)
     end
-
     if self.category == "tilemaps" then
         local _, def = self:getCurrentTilemap()
         return {
-            self:readOnlyField("Path", def and def.path or ""),
-            self:readOnlyField("Format", def and def.format or ""),
-            self:readOnlyField("Layer", def and tostring(def.layer or "auto") or ""),
-            self:readOnlyField("Default Tile", def and tostring(def.defaultTileType or "") or ""),
+            self:readOnlyField("Path",          def and def.path or ""),
+            self:readOnlyField("Format",        def and def.format or ""),
+            self:readOnlyField("Layer",         def and tostring(def.layer or "auto") or ""),
+            self:readOnlyField("Default Tile",  def and tostring(def.defaultTileType or "") or ""),
             self:readOnlyField("Out of Bounds", def and tostring(def.outOfBoundsTileType or "") or ""),
         }
     end
-
     local _, tileDef = self:getCurrentTile()
-    tileDef.collision = tileDef.collision or { shape = "none" }
-    tileDef.overlay = type(tileDef.overlay) == "table" and tileDef.overlay or {}
-    return {
-        self:booleanField("Walkable", function() return tileDef.walkable end, function(v) tileDef.walkable = v end),
-        self:cycleField("Collision Shape", function() return tileDef.collision.shape or "none" end, function(v)
-            tileDef.collision.shape = v
-            if v == "circle" and tileDef.collision.radius == nil then
-                tileDef.collision.radius = 0.12
-                tileDef.collision.offsetX = tileDef.collision.offsetX or 0
-                tileDef.collision.offsetY = tileDef.collision.offsetY or 0.08
-            elseif v == "box" then
-                tileDef.collision.width = tileDef.collision.width or 0.24
-                tileDef.collision.height = tileDef.collision.height or 0.20
-                tileDef.collision.offsetX = tileDef.collision.offsetX or 0
-                tileDef.collision.offsetY = tileDef.collision.offsetY or 0.08
-            end
-        end, TILE_COLLISION_SHAPES),
-        self:numberField("Collision Radius", function() return tileDef.collision.radius end, function(v) tileDef.collision.radius = clamp(v, 0.02, 1) end, 0.01, 2),
-        self:numberField("Collision Width", function() return tileDef.collision.width end, function(v) tileDef.collision.width = clamp(v, 0.02, 1) end, 0.01, 2),
-        self:numberField("Collision Height", function() return tileDef.collision.height end, function(v) tileDef.collision.height = clamp(v, 0.02, 1) end, 0.01, 2),
-        self:numberField("Collision Offset X", function() return tileDef.collision.offsetX end, function(v) tileDef.collision.offsetX = clamp(v, -1, 1) end, 0.01, 2),
-        self:numberField("Collision Offset Y", function() return tileDef.collision.offsetY end, function(v) tileDef.collision.offsetY = clamp(v, -1, 1) end, 0.01, 2),
-        self:numberField("Overlay Scale", function() return tileDef.overlay.scale end, function(v) tileDef.overlay.scale = clamp(v, 0.1, 8) end, 0.05, 2),
-        self:numberField("Overlay Offset X", function() return tileDef.overlay.ox end, function(v) tileDef.overlay.ox = clamp(v, -256, 256) end, 1),
-        self:numberField("Overlay Offset Y", function() return tileDef.overlay.oy end, function(v) tileDef.overlay.oy = clamp(v, -256, 256) end, 1),
-    }
+    return self:_buildTileFields(tileDef)
 end
 
 function AssetManagerState:readOnlyField(label, value)
@@ -912,24 +928,11 @@ function AssetManagerState:reload()
 end
 
 function AssetManagerState:keypressed(key)
-    if key == "escape" then
-        self.game.stateMachine:setState("menu")
-        return
+    if key == "escape" then self.game.stateMachine:setState("menu") return end
+    if key == "tab" or key == "right" then
+        self.category = cycleValue(self.category, TABS, 1) return
     end
-
-    if key == "tab" then
-        self.category = cycleValue(self.category, TABS, 1)
-        return
-    end
-    if key == "left" then
-        self.category = cycleValue(self.category, TABS, -1)
-        return
-    end
-    if key == "right" then
-        self.category = cycleValue(self.category, TABS, 1)
-        return
-    end
-
+    if key == "left" then self.category = cycleValue(self.category, TABS, -1) return end
     if key == "up" then
         self.selection[self.category] = clamp(self.selection[self.category] - 1, 1, math.max(#self.assetIds[self.category], 1))
         return
@@ -938,45 +941,18 @@ function AssetManagerState:keypressed(key)
         self.selection[self.category] = clamp(self.selection[self.category] + 1, 1, math.max(#self.assetIds[self.category], 1))
         return
     end
-    if key == "w" then
-        self.fieldSelection[self.category] = clamp(self.fieldSelection[self.category] - 1, 1, #self:getEditableFields())
-        return
-    end
-    if key == "s" and not love.keyboard.isDown("lctrl", "rctrl", "lgui", "rgui") then
-        self:save()
-        return
-    end
-    if key == "r" then
-        self:reload()
-        return
-    end
-    if key == "[" then
-        self:adjustSelectedField(-1)
-        return
-    end
-    if key == "]" then
-        self:adjustSelectedField(1)
-        return
-    end
-    if key == "1" then
-        self.previewAnimationState = "idle"
-        return
-    end
-    if key == "2" then
-        self.previewAnimationState = "walk"
-        return
-    end
-    if key == "3" then
-        self.previewAnimationState = "attack"
-        return
-    end
-    if key == "a" then
+    if key == "w" or key == "a" then
         self.fieldSelection[self.category] = clamp(self.fieldSelection[self.category] - 1, 1, #self:getEditableFields())
         return
     end
     if key == "d" then
         self.fieldSelection[self.category] = clamp(self.fieldSelection[self.category] + 1, 1, #self:getEditableFields())
+        return
     end
+    if key == "s" and not love.keyboard.isDown("lctrl", "rctrl", "lgui", "rgui") then
+        self:save() return
+    end
+    if KEY_SIMPLE_ACTIONS[key] then KEY_SIMPLE_ACTIONS[key](self) end
 end
 
 function AssetManagerState:wheelmoved(_, y)
@@ -1028,79 +1004,72 @@ function AssetManagerState:mousereleased(_, _, button)
     end
 end
 
-function AssetManagerState:beginPreviewDrag(x, y)
-    local preview = self.ui.previewBounds
-    if not preview then
-        return
-    end
-
-    if self.category == "animations" and preview.kind == "animation" then
-        local _, setDef = self:getCurrentAnimationSet()
-        local hitbox = setDef.hitbox or {}
-        for name, handle in pairs(preview.handles or {}) do
-            if self:isInside(x, y, handle) then
-                self.drag = {
-                    type = name == "move" and "animation-move" or "animation-resize",
-                    scale = preview.scale,
-                    cx = preview.cx,
-                    cy = preview.cy,
-                    startX = x,
-                    startY = y,
-                    offsetX = ensureNumber(hitbox.offsetX, 0),
-                    offsetY = ensureNumber(hitbox.offsetY, 0),
-                    width = ensureNumber(hitbox.width, 24),
-                    height = ensureNumber(hitbox.height, 24),
-                }
-                return
-            end
+function AssetManagerState:_beginAnimationDrag(x, y, preview)
+    local _, setDef = self:getCurrentAnimationSet()
+    local hitbox = setDef.hitbox or {}
+    for name, handle in pairs(preview.handles or {}) do
+        if self:isInside(x, y, handle) then
+            self.drag = {
+                type    = name == "move" and "animation-move" or "animation-resize",
+                scale   = preview.scale,
+                cx      = preview.cx,
+                cy      = preview.cy,
+                startX  = x,
+                startY  = y,
+                offsetX = ensureNumber(hitbox.offsetX, 0),
+                offsetY = ensureNumber(hitbox.offsetY, 0),
+                width   = ensureNumber(hitbox.width, 24),
+                height  = ensureNumber(hitbox.height, 24),
+            }
+            return
         end
-        return
     end
+end
 
-    if self.category ~= "tiles" then
-        return
-    end
-
+function AssetManagerState:_beginTileDrag(x, y, preview)
     local _, tileDef = self:getCurrentTile()
     tileDef.collision = tileDef.collision or { shape = "none" }
     local collision = tileDef.collision
     if collision.shape == "circle" then
         local handles = preview.handles or {}
         if handles.radius and self:isInside(x, y, handles.radius) then
-            self.drag = {
-                type = "tile-circle-radius",
-                cx = preview.cx,
-                cy = preview.cy,
-            }
+            self.drag = { type = "tile-circle-radius", cx = preview.cx, cy = preview.cy }
         elseif handles.move and self:isInside(x, y, handles.move) then
             self.drag = {
-                type = "tile-circle-move",
-                startX = x,
-                startY = y,
+                type = "tile-circle-move", startX = x, startY = y,
                 offsetX = ensureNumber(collision.offsetX, 0),
                 offsetY = ensureNumber(collision.offsetY, 0),
             }
         end
         return
     end
-
     if collision.shape == "box" then
         for name, handle in pairs(preview.handles or {}) do
             if type(handle) == "table" and handle.x and self:isInside(x, y, handle) then
                 self.drag = {
-                    type = name == "move" and "tile-box-move" or "tile-box-resize",
-                    startX = x,
-                    startY = y,
+                    type    = name == "move" and "tile-box-move" or "tile-box-resize",
+                    startX  = x, startY  = y,
                     offsetX = ensureNumber(collision.offsetX, 0),
                     offsetY = ensureNumber(collision.offsetY, 0),
-                    width = ensureNumber(collision.width, 0.24),
-                    height = ensureNumber(collision.height, 0.20),
-                    cx = preview.cx,
-                    cy = preview.cy,
+                    width   = ensureNumber(collision.width, 0.24),
+                    height  = ensureNumber(collision.height, 0.20),
+                    cx = preview.cx, cy = preview.cy,
                 }
                 return
             end
         end
+    end
+end
+
+function AssetManagerState:beginPreviewDrag(x, y)
+    local preview = self.ui.previewBounds
+    if not preview then return end
+    if self.category == "animations" and preview.kind == "animation" then
+        self:_beginAnimationDrag(x, y, preview)
+        return
+    end
+    if self.category == "tiles" then
+        self:_beginTileDrag(x, y, preview)
     end
 end
 

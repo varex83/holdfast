@@ -233,6 +233,56 @@ function AssetManager:getTileDefinition(tileType)
     return self.data.tiles[tileType]
 end
 
+function AssetManager:_resolveGroundData(def, tx, ty, timeSeconds)
+    if not def.ground then return nil end
+    local atlasId = def.ground.atlas
+    if def.ground.atlases then
+        atlasId = chooseVariant(def.ground.atlases, tx, ty)
+    end
+
+    local tileId
+    if def.ground.frames then
+        local frameDuration = def.ground.frameDuration or 0.3
+        local frameIndex = (math.floor((timeSeconds or 0) / frameDuration) % #def.ground.frames) + 1
+        tileId = def.ground.frames[frameIndex]
+    elseif def.ground.tileIds then
+        tileId = chooseVariant(def.ground.tileIds, tx, ty)
+    else
+        tileId = chooseVariant(def.ground.variants, tx, ty)
+    end
+
+    local atlas = self:getAtlas(atlasId)
+    return {
+        image = atlas.image,
+        quad = self:getQuad(atlasId, tileId),
+        tint = def.ground.tint or {1, 1, 1},
+    }
+end
+
+function AssetManager:_resolveOverlayImageData(def, tx, ty)
+    if def.overlay.atlas or def.overlay.atlases then
+        local atlasId = def.overlay.atlas
+        if def.overlay.atlases then
+            atlasId = chooseVariant(def.overlay.atlases, tx, ty)
+        end
+
+        local tileId = def.overlay.tileId or 0
+        if def.overlay.tileIds then
+            tileId = chooseVariant(def.overlay.tileIds, tx, ty)
+        end
+
+        local atlas = self:getAtlas(atlasId)
+        return atlas.image, self:getQuad(atlasId, tileId)
+    else
+        local imageRef = def.overlay.image
+        if def.overlay.images then
+            imageRef = chooseVariant(def.overlay.images, tx, ty)
+        end
+
+        return self:getImageFromRef(imageRef, def.overlay), nil
+    end
+end
+
 function AssetManager:getTileRenderData(tileType, tx, ty, timeSeconds)
     local def = self:getTileDefinition(tileType)
     if not def then
@@ -241,30 +291,7 @@ function AssetManager:getTileRenderData(tileType, tx, ty, timeSeconds)
 
     local result = {}
 
-    if def.ground then
-        local atlasId = def.ground.atlas
-        if def.ground.atlases then
-            atlasId = chooseVariant(def.ground.atlases, tx, ty)
-        end
-
-        local tileId
-        if def.ground.frames then
-            local frameDuration = def.ground.frameDuration or 0.3
-            local frameIndex = (math.floor((timeSeconds or 0) / frameDuration) % #def.ground.frames) + 1
-            tileId = def.ground.frames[frameIndex]
-        elseif def.ground.tileIds then
-            tileId = chooseVariant(def.ground.tileIds, tx, ty)
-        else
-            tileId = chooseVariant(def.ground.variants, tx, ty)
-        end
-
-        local atlas = self:getAtlas(atlasId)
-        result.ground = {
-            image = atlas.image,
-            quad = self:getQuad(atlasId, tileId),
-            tint = def.ground.tint or {1, 1, 1},
-        }
-    end
+    result.ground = self:_resolveGroundData(def, tx, ty, timeSeconds)
 
     if hasOverlayDefinition(def.overlay) then
         local overlay = {
@@ -277,28 +304,7 @@ function AssetManager:getTileRenderData(tileType, tx, ty, timeSeconds)
             anchorY = def.overlay.anchorY,
         }
 
-        if def.overlay.atlas or def.overlay.atlases then
-            local atlasId = def.overlay.atlas
-            if def.overlay.atlases then
-                atlasId = chooseVariant(def.overlay.atlases, tx, ty)
-            end
-
-            local tileId = def.overlay.tileId or 0
-            if def.overlay.tileIds then
-                tileId = chooseVariant(def.overlay.tileIds, tx, ty)
-            end
-
-            local atlas = self:getAtlas(atlasId)
-            overlay.image = atlas.image
-            overlay.quad = self:getQuad(atlasId, tileId)
-        else
-            local imageRef = def.overlay.image
-            if def.overlay.images then
-                imageRef = chooseVariant(def.overlay.images, tx, ty)
-            end
-
-            overlay.image = self:getImageFromRef(imageRef, def.overlay)
-        end
+        overlay.image, overlay.quad = self:_resolveOverlayImageData(def, tx, ty)
 
         result.overlay = overlay
     end
