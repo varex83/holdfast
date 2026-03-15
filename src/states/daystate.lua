@@ -76,12 +76,23 @@ function DayState:update(dt)
         return
     end
 
-    -- Placeholder player movement (WASD in isometric tile space)
-    local moved = false
-    if love.keyboard.isDown("w") then self.player.ty = self.player.ty - self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("s") then self.player.ty = self.player.ty + self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("a") then self.player.tx = self.player.tx - self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("d") then self.player.tx = self.player.tx + self.player.speed * dt; moved = true end
+    -- Player movement relative to screen (W=up, S=down, A=left, D=right).
+    -- In isometric space each screen direction maps to a diagonal tile vector:
+    --   screen up    → tx-=1, ty-=1
+    --   screen down  → tx+=1, ty+=1
+    --   screen left  → tx-=1, ty+=1
+    --   screen right → tx+=1, ty-=1
+    local dx, dy = 0, 0
+    if love.keyboard.isDown("w") then dx = dx - 1; dy = dy - 1 end
+    if love.keyboard.isDown("s") then dx = dx + 1; dy = dy + 1 end
+    if love.keyboard.isDown("a") then dx = dx - 1; dy = dy + 1 end
+    if love.keyboard.isDown("d") then dx = dx + 1; dy = dy - 1 end
+
+    if dx ~= 0 or dy ~= 0 then
+        local len = math.sqrt(dx * dx + dy * dy)
+        self.player.tx = self.player.tx + (dx / len) * self.player.speed * dt
+        self.player.ty = self.player.ty + (dy / len) * self.player.speed * dt
+    end
 
     -- Camera follows player (in screen space)
     local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
