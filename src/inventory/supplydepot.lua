@@ -3,9 +3,14 @@
 -- Players deposit by pressing F near the depot tile.
 
 local Class     = require("lib.class")
+local AssetManager = require("src.core.assetmanager")
 local Iso       = require("src.rendering.isometric")
 
 local SupplyDepot = Class:extend()
+
+local function getDepotImage()
+    return AssetManager.getCurrent():getImage("props.supply_depot")
+end
 
 -- Tile distance within which a player can deposit/withdraw.
 local INTERACT_RADIUS = 3.0
@@ -79,31 +84,19 @@ end
 
 -- ─── Rendering ───────────────────────────────────────────────────────────────
 
--- Draw a placeholder depot marker. Camera transform must be applied.
 function SupplyDepot:draw()
     local sx, sy = Iso.tileToScreen(self.tx, self.ty)
+    local image = getDepotImage()
 
-    -- Base diamond (dark wood colour)
-    love.graphics.setColor(0.45, 0.28, 0.10, 1)
-    love.graphics.polygon("fill",
-        sx,       sy,
-        sx + 32,  sy + 16,
-        sx,       sy + 32,
-        sx - 32,  sy + 16)
-
-    -- Chest icon (simple rectangle)
-    love.graphics.setColor(0.65, 0.42, 0.18, 1)
-    love.graphics.rectangle("fill", sx - 10, sy + 4, 20, 14)
-    love.graphics.setColor(0.85, 0.70, 0.30, 1)
-    love.graphics.rectangle("fill", sx - 10, sy + 4, 20, 6)
-
-    -- Outline
-    love.graphics.setColor(0.2, 0.1, 0.0, 1)
-    love.graphics.polygon("line",
-        sx,       sy,
-        sx + 32,  sy + 16,
-        sx,       sy + 32,
-        sx - 32,  sy + 16)
+    love.graphics.setColor(0.45, 0.28, 0.10, 0.22)
+    love.graphics.polygon("fill", sx, sy, sx + 32, sy + 16, sx, sy + 32, sx - 32, sy + 16)
+    Iso.drawProp(image, self.tx, self.ty, {
+        scale = 1.0,
+        anchorY = 22,
+        oy = 4,
+    })
+    love.graphics.setColor(0.2, 0.1, 0.0, 0.9)
+    love.graphics.polygon("line", sx, sy, sx + 32, sy + 16, sx, sy + 32, sx - 32, sy + 16)
 end
 
 -- Draw a "nearby" indicator (pulsing ring) when player is in range.

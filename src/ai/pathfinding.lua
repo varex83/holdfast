@@ -19,6 +19,8 @@ function Pathfinding.new(config)
     self.matrix = {}
     self.grid = nil
     self.finder = nil
+    self.pathCache = {}
+    self.cacheRevision = 0
     self:rebuild()
 
     return self
@@ -38,6 +40,8 @@ function Pathfinding:rebuild()
     self.grid = Jumper.Grid(self.matrix)
     self.finder = Jumper.Pathfinder(self.grid, "ASTAR", self.walkableValue)
     self.finder:setMode("ORTHOGONAL")
+    self.cacheRevision = self.cacheRevision + 1
+    self.pathCache = {}
 end
 
 function Pathfinding:setBlockedCell(col, row, blocked)
@@ -84,6 +88,11 @@ function Pathfinding:findPath(startCol, startRow, goalCol, goalRow)
         return nil
     end
 
+    local cacheKey = table.concat({startCol, startRow, goalCol, goalRow, self.cacheRevision}, ":")
+    if self.pathCache[cacheKey] then
+        return self.pathCache[cacheKey]
+    end
+
     local path = self.finder:getPath(startCol, startRow, goalCol, goalRow)
     if not path then
         return nil
@@ -94,6 +103,7 @@ function Pathfinding:findPath(startCol, startRow, goalCol, goalRow)
         nodes[#nodes + 1] = {col = col, row = row}
     end
 
+    self.pathCache[cacheKey] = nodes
     return nodes
 end
 

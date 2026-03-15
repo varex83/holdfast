@@ -78,7 +78,11 @@ function HarvestManager:update(dt, ptx, pty, nodeManager, inventory)
     if a.progress >= a.duration then
         -- Harvest complete
         local amount = node:roll()
-        node:deplete()
+        if nodeManager and nodeManager.deplete then
+            nodeManager:deplete(node)
+        else
+            node:deplete()
+        end
 
         if inventory then
             inventory:add(node.resourceType, amount)

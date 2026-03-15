@@ -40,6 +40,12 @@ function Cooldown.new(gcdDuration)
     -- Per-ability cooldowns
     -- Structure: { ability_name = { duration, remaining, paused } }
     self.cooldowns = {}
+    self.abilities = {}
+    self.energy = {
+        current = 0,
+        max = 0,
+        regen = 0,
+    }
 
     -- Cooldown modifiers (for buffs/debuffs)
     self.modifiers = {}
@@ -55,8 +61,30 @@ function Cooldown.new(gcdDuration)
     return self
 end
 
+function Cooldown:setEnergyPool(maxEnergy, currentEnergy, regenRate)
+    self.energy.max = math.max(0, maxEnergy or 0)
+    self.energy.current = math.max(0, math.min(currentEnergy or self.energy.max, self.energy.max))
+    self.energy.regen = math.max(0, regenRate or 0)
+end
+
+function Cooldown:getEnergy()
+    return self.energy.current
+end
+
+function Cooldown:registerAbility(abilityName, definition)
+    self.abilities[abilityName] = definition
+end
+
+function Cooldown:getAbility(abilityName)
+    return self.abilities[abilityName]
+end
+
 -- Update all cooldown timers
 function Cooldown:update(dt)
+    if self.energy.regen > 0 and self.energy.current < self.energy.max then
+        self.energy.current = math.min(self.energy.max, self.energy.current + self.energy.regen * dt)
+    end
+
     -- Update global cooldown
     if self.gcdRemaining > 0 then
         local wasOnGCD = true
@@ -78,6 +106,19 @@ function Cooldown:update(dt)
             end
         end
     end
+end
+
+function Cooldown:hasEnergy(cost)
+    return self.energy.current >= (cost or 0)
+end
+
+function Cooldown:spendEnergy(cost)
+    cost = cost or 0
+    if not self:hasEnergy(cost) then
+        return false
+    end
+    self.energy.current = self.energy.current - cost
+    return true
 end
 
 -- Start cooldown for a specific ability
@@ -128,6 +169,38 @@ function Cooldown:isReady(abilityName, ignoreGCD)
     end
 
     return cooldown.remaining <= 0
+end
+
+function Cooldown:canActivate(abilityName, ignoreGCD)
+    local ability = self.abilities[abilityName]
+    if not self:isReady(abilityName, ignoreGCD) then
+        return false, "cooldown"
+    end
+    if ability and not self:hasEnergy(ability.cost) then
+        return false, "energy"
+    end
+    return true
+end
+
+function Cooldown:activate(abilityName, context, options)
+    local ability = self.abilities[abilityName]
+    if not ability or type(ability.activate) ~= "function" then
+        return false, "missing_ability"
+    end
+
+    local canActivate, reason = self:canActivate(abilityName, options and options.ignoreGCD)
+    if not canActivate then
+        return false, reason
+    end
+
+    local ok, result = ability.activate(context or {})
+    if not ok then
+        return false, result
+    end
+
+    self:spendEnergy(ability.cost or 0)
+    self:startCooldown(abilityName, ability.cooldown, not (options and options.skipGCD))
+    return true, result
 end
 
 -- Get remaining cooldown time for an ability

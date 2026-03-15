@@ -1,0 +1,16 @@
+{
+  "tilemaps":{
+    "sample.beginning_fields":{
+      "path":"assets/tilemaps/beginning_fields.lua",
+      "outOfBoundsTileType":"grass",
+      "defaultTileType":"grass",
+      "gidToTileType":{
+        "0":"grass",
+        "1":"grass"
+      },
+      "description":"Sample Tiled-Lua map registered through the asset manager.",
+      "format":"tiled_lua",
+      "layer":"Ground"
+    }
+  }
+}

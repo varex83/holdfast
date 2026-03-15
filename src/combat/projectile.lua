@@ -175,9 +175,9 @@ function Projectile.createSpit(world, x, y, direction, owner, team)
 end
 
 -- Create multiple arrows in an arc (Archer's Volley ability)
-function Projectile.createVolley(world, x, y, baseDirection, owner, team, arrowCount)
+function Projectile.createVolley(world, x, y, baseDirection, owner, team, arrowCount, arcAngle)
     arrowCount = arrowCount or 5
-    local arcAngle = math.pi / 4  -- 45 degrees spread
+    arcAngle = arcAngle or math.pi / 4
     local angleStep = arcAngle / (arrowCount - 1)
     local startAngle = baseDirection - arcAngle / 2
 

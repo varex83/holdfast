@@ -5,39 +5,12 @@ local Class = require("lib.class")
 local Camera = require("src.core.camera")
 local Character = require("src.characters.character")
 local Constants = require("data.constants")
+local Classes = require("data.classes")
+local ClassSelect = require("src.ui.classselect")
 local Iso = require("src.rendering.isometric")
 local Tile = require("src.world.tile")
-local WorldGen = require("src.world.worldgen")
 local ChunkManager = require("src.world.chunk")
 local MenuState = Class:extend()
-
-local CLASS_ORDER = {
-    Constants.CLASS.WARRIOR,
-    Constants.CLASS.ARCHER,
-    Constants.CLASS.ENGINEER,
-    Constants.CLASS.SCOUT,
-}
-
-local CLASS_LABELS = {
-    [Constants.CLASS.WARRIOR] = "Warrior",
-    [Constants.CLASS.ARCHER] = "Archer",
-    [Constants.CLASS.ENGINEER] = "Engineer",
-    [Constants.CLASS.SCOUT] = "Scout",
-}
-
-local CLASS_SUMMARIES = {
-    [Constants.CLASS.WARRIOR] = "Frontline melee, high health, heavy armor.",
-    [Constants.CLASS.ARCHER] = "Ranged pressure with medium speed and low health.",
-    [Constants.CLASS.ENGINEER] = "Fast utility specialist focused on building and repair.",
-    [Constants.CLASS.SCOUT] = "Fast stealth flanker with light melee damage.",
-}
-
-local CLASS_PREVIEW = {
-    [Constants.CLASS.WARRIOR] = {appearance = "soldier", tint = {1.0, 1.0, 1.0, 1}},
-    [Constants.CLASS.ARCHER] = {appearance = "soldier", tint = {1.0, 0.96, 0.90, 1}},
-    [Constants.CLASS.ENGINEER] = {appearance = "orc", tint = {0.90, 0.92, 1.0, 1}},
-    [Constants.CLASS.SCOUT] = {appearance = "soldier", tint = {0.82, 1.0, 0.90, 1}},
-}
 
 local PREVIEW_VISUAL_SCALE = 3.8
 
@@ -48,22 +21,23 @@ function MenuState:new(game)
     self.sectionFont = nil
     self.smallFont = nil  -- Lazy loaded
     self.selectedOption = 1
-    self.selectedClassIndex = 1
+    self.classSelect = ClassSelect.new(Constants.CLASS.WARRIOR)
     self.options = {
         "Test Phase 1",
+        "Asset Manager",
         "New Game",
         "Load Game",
         "Settings",
         "Quit"
     }
-    local initialClass = CLASS_ORDER[self.selectedClassIndex]
-    self.previewCharacter = Character.new(initialClass, 0, 0, CLASS_PREVIEW[initialClass])
-    self.previewCharacter.visualScale = PREVIEW_VISUAL_SCALE
+    local initialClass = self.classSelect:getSelectedClass()
+    self.previewCharacter = Character.new(initialClass, 0, 0, Classes.getVisuals(initialClass))
+    self.previewCharacter:setVisualScale(PREVIEW_VISUAL_SCALE)
     self.backgroundSeed = 41721
     self.backgroundTime = 0
     self.backgroundDrift = {x = 0.9, y = 0.45}
     self.backgroundFocus = {tx = -8, ty = -5}
-    self.chunks = ChunkManager()
+    self.chunks = ChunkManager(self.game.tileManager)
     local sw, sh = love.graphics.getDimensions()
     self.camera = Camera(sw, sh)
     self.camera:setZoom(1.75)
@@ -71,7 +45,7 @@ end
 
 function MenuState:enter()
     print("Entered Menu State")
-    WorldGen.init(self.backgroundSeed)
+    self.game.tileManager:setProceduralSource(self.backgroundSeed)
     self.backgroundTime = 0
     local wx, wy = Iso.tileToScreen(self.backgroundFocus.tx, self.backgroundFocus.ty)
     self.camera:moveTo(wx, wy)
@@ -183,7 +157,12 @@ function MenuState:drawBackground()
                 sy = e.sy + Iso.TILE_H,
                 draw = function()
                     Iso.drawProp(renderData.overlay.image, e.tx, e.ty, {
+                        quad = renderData.overlay.quad,
                         scale = renderData.overlay.scale,
+                        ox = renderData.overlay.ox,
+                        oy = renderData.overlay.oy,
+                        anchorX = renderData.overlay.anchorX,
+                        anchorY = renderData.overlay.anchorY,
                         r = tint[1] * 0.96,
                         g = tint[2] * 0.96,
                         b = tint[3] * 0.96,
@@ -265,28 +244,14 @@ function MenuState:drawClassPanel()
     local panelY = panel.y
     local panelW = panel.w
     local panelH = panel.h
-    local selectedClass = CLASS_ORDER[self.selectedClassIndex]
-
-    love.graphics.setColor(0.72, 0.64, 0.34, 0.9)
-    love.graphics.rectangle("line", panelX, panelY, panelW, panelH, 24, 24)
-
-    love.graphics.setFont(self.sectionFont)
-    love.graphics.setColor(0.85, 0.82, 0.62, 1)
-    love.graphics.print("Selected Survivor", panelX + 26, panelY + 36)
-
-    love.graphics.setFont(self.titleFont)
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.print(CLASS_LABELS[selectedClass], panelX + 24, panelY + 80)
-
-    love.graphics.setFont(self.smallFont)
-    love.graphics.setColor(0.86, 0.88, 0.90, 1)
-    love.graphics.printf(CLASS_SUMMARIES[selectedClass], panelX + 26, panelY + 160, panelW - 52)
-
-    love.graphics.setColor(0.10, 0.11, 0.12, 0.92)
-    love.graphics.rectangle("fill", panelX + 24, panelY + 214, panelW - 48, 128, 20, 20)
+    self.classSelect:draw(panel, {
+        section = self.sectionFont,
+        title = self.titleFont,
+        small = self.smallFont,
+    })
 
     local previewX = panelX + panelW * 0.5
-    local previewY = panelY + 282
+    local previewY = panelY + 334
     local shadowY = previewY + self.previewCharacter.drawOffsetY + 6
     local shadowW = 16 * self.previewCharacter.visualScale
     local shadowH = 4.5 * self.previewCharacter.visualScale
@@ -298,10 +263,6 @@ function MenuState:drawClassPanel()
     self.previewCharacter.position.y = previewY
     self.previewCharacter:draw()
 
-    love.graphics.setColor(0.82, 0.84, 0.86, 1)
-    love.graphics.printf("<  left / right  >", panelX + 26, panelY + panelH - 48, panelW - 52, "center")
-    love.graphics.setColor(0.66, 0.70, 0.72, 1)
-    love.graphics.printf("Idle preview updates live", panelX + 26, panelY + panelH - 22, panelW - 52, "center")
     love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -310,7 +271,7 @@ function MenuState:getLayout()
     local menuW = 430
     local menuH = 512
     local classW = 322
-    local classH = 392
+    local classH = 460
     local sidePadding = 42
 
     local menuY = math.floor((h - menuH) * 0.5) + 22
@@ -333,9 +294,9 @@ function MenuState:getLayout()
 end
 
 function MenuState:updatePreviewCharacter()
-    local selectedClass = CLASS_ORDER[self.selectedClassIndex]
-    self.previewCharacter = Character.new(selectedClass, 0, 0, CLASS_PREVIEW[selectedClass])
-    self.previewCharacter.visualScale = PREVIEW_VISUAL_SCALE
+    local selectedClass = self.classSelect:getSelectedClass()
+    self.previewCharacter = Character.new(selectedClass, 0, 0, Classes.getVisuals(selectedClass))
+    self.previewCharacter:setVisualScale(PREVIEW_VISUAL_SCALE)
     self.previewCharacter:setDesiredMovement(0, 0)
 end
 
@@ -380,12 +341,7 @@ function MenuState:_buildDrawList()
 end
 
 function MenuState:changeClass(delta)
-    self.selectedClassIndex = self.selectedClassIndex + delta
-    if self.selectedClassIndex < 1 then
-        self.selectedClassIndex = #CLASS_ORDER
-    elseif self.selectedClassIndex > #CLASS_ORDER then
-        self.selectedClassIndex = 1
-    end
+    self.classSelect:change(delta)
     self:updatePreviewCharacter()
 end
 
@@ -437,20 +393,22 @@ function MenuState:gamepadPressed(joystick, button)
 end
 
 function MenuState:selectOption()
-    local selectedClass = CLASS_ORDER[self.selectedClassIndex]
+    local selectedClass = self.classSelect:getSelectedClass()
     if self.selectedOption == 1 then
         -- Test Phase 1
         self.game.stateMachine:setState("test", selectedClass)
     elseif self.selectedOption == 2 then
+        self.game.stateMachine:setState("asset_manager")
+    elseif self.selectedOption == 3 then
         -- New Game
         self.game.stateMachine:setState("day", selectedClass)
-    elseif self.selectedOption == 3 then
+    elseif self.selectedOption == 4 then
         -- Load Game (not implemented yet)
         print("Load Game not implemented yet")
-    elseif self.selectedOption == 4 then
+    elseif self.selectedOption == 5 then
         -- Settings
         self.game.stateMachine:setState("settings")
-    elseif self.selectedOption == 5 then
+    elseif self.selectedOption == 6 then
         -- Quit
         love.event.quit()
     end
