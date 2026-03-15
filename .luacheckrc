@@ -16,6 +16,8 @@ exclude_files = {
     "build/**",
     "dist/**",
     ".git/**",
+    ".luarocks/**",
+    "lib/**",
 }
 
 -- Global variables to allow

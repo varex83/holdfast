@@ -110,12 +110,8 @@ function DayState:update(dt)
     end
 end
 
-function DayState:draw()
-    love.graphics.clear(0.50, 0.70, 0.90, 1)
-
-    self.camera:apply()
-
-    -- Compute tile bounds from all 4 screen corners (isometric is not axis-aligned)
+-- Returns tile rect {x1,y1,x2,y2} covering the visible screen area.
+function DayState:_visibleTileRect()
     local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
     local corners = {
         { self.camera:screenToWorld(0,  0)  },
@@ -132,34 +128,39 @@ function DayState:draw()
         if tx > txMax then txMax = tx end
         if ty > tyMax then tyMax = ty end
     end
-    local margin = 6
-    local x1f = math.floor(txMin) - margin
-    local y1f = math.floor(tyMin) - margin
-    local x2f = math.ceil(txMax)  + margin
-    local y2f = math.ceil(tyMax)  + margin
+    local m = 6
+    return math.floor(txMin)-m, math.floor(tyMin)-m,
+           math.ceil(txMax)+m,  math.ceil(tyMax)+m
+end
 
-    -- Collect explored tiles in the visible rect
-    local drawList = {}
-    for tx = x1f, x2f do
-        for ty = y1f, y2f do
+-- Builds the sorted list of explored tiles to draw this frame.
+function DayState:_buildDrawList(x1, y1, x2, y2)
+    local list = {}
+    for tx = x1, x2 do
+        for ty = y1, y2 do
             local state = self.fog:getState(tx, ty)
             if state ~= "hidden" then
-                local tileType
-                if state == "visible" then
-                    tileType = self.chunks:getTile(tx, ty)
-                else
-                    tileType = self.fog:getCachedType(tx, ty)
-                end
+                local tileType = state == "visible"
+                    and self.chunks:getTile(tx, ty)
+                    or  self.fog:getCachedType(tx, ty)
                 if tileType then
                     local _, sy = Iso.tileToScreen(tx, ty)
-                    drawList[#drawList + 1] = {
-                        sy = sy, tx = tx, ty = ty,
-                        t  = tileType, visible = (state == "visible")
-                    }
+                    list[#list+1] = { sy=sy, tx=tx, ty=ty, t=tileType, visible=(state=="visible") }
                 end
             end
         end
     end
+    table.sort(list, function(a, b) return a.sy < b.sy end)
+    return list
+end
+
+function DayState:draw()
+    love.graphics.clear(0.50, 0.70, 0.90, 1)
+
+    self.camera:apply()
+
+    local x1, y1, x2, y2 = self:_visibleTileRect()
+    local drawList = self:_buildDrawList(x1, y1, x2, y2)
     table.sort(drawList, function(a, b) return a.sy < b.sy end)
 
     -- Pass 1: tile fills

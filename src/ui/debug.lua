@@ -38,79 +38,58 @@ function Debug:update(dt)
     end
 end
 
+-- Collect lines of debug text from game state
+function Debug:_collectLines()
+    local lines = {
+        "FPS: " .. self.fps,
+        string.format("Memory: %.2f MB", self.memory / 1024),
+    }
+    local g = self.game
+    if g and g.stateMachine then
+        lines[#lines+1] = "State: " .. (g.stateMachine:getCurrentState() or "none")
+    end
+    if g and g.world then
+        lines[#lines+1] = "Entities: " .. g.world:getEntityCount()
+    end
+    if g and g.dayCounter then
+        lines[#lines+1] = "Day: " .. g.dayCounter
+    end
+    if g and g.timeOfDay then
+        lines[#lines+1] = string.format("Time: %.1f", g.timeOfDay)
+    end
+    local mx, my = love.mouse.getPosition()
+    lines[#lines+1] = string.format("Mouse: %d, %d", mx, my)
+    if g and g.input then
+        local has = g.input:hasController()
+        lines[#lines+1] = "Controller: " .. (has and "Connected" or "None")
+        if has then lines[#lines+1] = "Name: " .. g.input:getControllerName() end
+    end
+    return lines
+end
+
 -- Draw debug overlay
 function Debug:draw()
     if not self.enabled then return end
 
-    -- Lazy load font
-    if not self.font then
-        self.font = love.graphics.newFont(12)
-    end
+    if not self.font then self.font = love.graphics.newFont(12) end
+
+    local lineHeight = 16
+    local lines = self:_collectLines()
+    local height = (#lines + 2) * lineHeight
 
     love.graphics.setFont(self.font)
     love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 10, 10, 300, 240)
+    love.graphics.rectangle("fill", 10, 10, 300, height)
 
     love.graphics.setColor(0, 1, 0, 1)
     local y = 20
-    local lineHeight = 16
-
-    -- FPS
-    love.graphics.print("FPS: " .. self.fps, 20, y)
-    y = y + lineHeight
-
-    -- Memory
-    love.graphics.print(string.format("Memory: %.2f MB", self.memory / 1024), 20, y)
-    y = y + lineHeight
-
-    -- Current state
-    if self.game and self.game.stateMachine then
-        local state = self.game.stateMachine:getCurrentState() or "none"
-        love.graphics.print("State: " .. state, 20, y)
+    for _, line in ipairs(lines) do
+        love.graphics.print(line, 20, y)
         y = y + lineHeight
     end
 
-    -- Entity count
-    if self.game and self.game.world then
-        love.graphics.print("Entities: " .. self.game.world:getEntityCount(), 20, y)
-        y = y + lineHeight
-    end
-
-    -- Day counter
-    if self.game and self.game.dayCounter then
-        love.graphics.print("Day: " .. self.game.dayCounter, 20, y)
-        y = y + lineHeight
-    end
-
-    -- Time of day
-    if self.game and self.game.timeOfDay then
-        love.graphics.print(string.format("Time: %.1f", self.game.timeOfDay), 20, y)
-        y = y + lineHeight
-    end
-
-    -- Mouse position
-    local mx, my = love.mouse.getPosition()
-    love.graphics.print(string.format("Mouse: %d, %d", mx, my), 20, y)
-    y = y + lineHeight
-
-    -- Controller info
-    if self.game and self.game.input then
-        local hasController = self.game.input:hasController()
-        love.graphics.print("Controller: " .. (hasController and "Connected" or "None"), 20, y)
-        y = y + lineHeight
-
-        if hasController then
-            love.graphics.print("Name: " .. self.game.input:getControllerName(), 20, y)
-            y = y + lineHeight
-        end
-    end
-
-    -- Controls hint
-    y = y + lineHeight
     love.graphics.setColor(1, 1, 1, 0.7)
-    love.graphics.print("F1: Toggle Debug", 20, y)
-
-    -- Reset color
+    love.graphics.print("F1: Toggle Debug", 20, y + lineHeight)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
