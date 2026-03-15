@@ -35,14 +35,27 @@ local function compareEntityDrawEntries(a, b)
     return a.sy < b.sy
 end
 
--- Convert stick/screen direction to iso tile direction.
--- Uses the same matrix as player movement: dtx = sx/hw + sy/hh, dty = sy/hh - sx/hw.
-local function screenDirToTile(sx, sy)
-    local hw, hh = 32, 16
-    local dtx = sx / hw + sy / hh
-    local dty = sy / hh - sx / hw
-    return dtx > 0 and 1 or (dtx < 0 and -1 or 0),
-           dty > 0 and 1 or (dty < 0 and -1 or 0)
+-- Map right-stick direction to all 8 iso tile directions via octant quantisation.
+-- Stick angle 0° = screen-right, increases clockwise.
+-- Each of the 8 octants maps to one of the 8 tile-space neighbours.
+local STICK_TILE_DIRS = {
+    -- octant 0..7 starting at screen-right, clockwise
+    { 1, -1},  -- 0: right        → NE
+    { 1,  0},  -- 1: down-right   → E
+    { 1,  1},  -- 2: down         → SE
+    { 0,  1},  -- 3: down-left    → S
+    {-1,  1},  -- 4: left         → SW
+    {-1,  0},  -- 5: up-left      → W
+    {-1, -1},  -- 6: up           → NW
+    { 0, -1},  -- 7: up-right     → N
+}
+
+local function stickToTileDelta(rx, ry)
+    if math.abs(rx) < 0.4 and math.abs(ry) < 0.4 then return 0, 0 end
+    local angle  = math.atan2(ry, rx)                          -- -π .. π
+    local octant = math.floor(angle / (math.pi / 4) + 0.5) % 8
+    local d = STICK_TILE_DIRS[octant + 1]
+    return d[1], d[2]
 end
 
 function DayState:new(game)
@@ -165,7 +178,7 @@ function DayState:_updateCamera(dt)
         -- Right stick drives build cursor instead of camera
         self._stickCooldown = self._stickCooldown - dt
         if self._stickCooldown <= 0 and (math.abs(rx) > 0.4 or math.abs(ry) > 0.4) then
-            local ctx, cty = screenDirToTile(rx, ry)
+            local ctx, cty = stickToTileDelta(rx, ry)
             if ctx ~= 0 or cty ~= 0 then
                 self.ghost:moveCursor(ctx, cty)
                 self._stickCooldown = 0.15
