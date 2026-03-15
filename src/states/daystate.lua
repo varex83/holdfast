@@ -842,44 +842,26 @@ function DayState:_countLoadedChunks()
     return count
 end
 
-function DayState:keypressed(key, scancode, isrepeat)
-    if isrepeat then
-        return
+function DayState:_keypressedBuild(key)
+    if key == "b" then
+        if self.ghost:isActive() then self.ghost:cycleType()
+        else self.ghost:activate(self.player.tx, self.player.ty) end
+    elseif key == "r" and self.ghost:isActive() then
+        local tx, ty = self.ghost:cursorTile()
+        self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
+    elseif ARROW_CURSOR[key] and self.ghost:isActive() then
+        local d = ARROW_CURSOR[key]
+        self.ghost:moveCursor(d[1], d[2])
     end
-    if key == "escape" then
-        if self.ghost:isActive() then
-            self.ghost:deactivate()
-        else
-            self.game.stateMachine:setState("menu")
-        end
-    elseif key == "f3" then
-        self.debugMode = not self.debugMode
-    elseif key == "space" then
-        if not self.ghost:isActive() then
-            self:_attackPlayer(1.0, 1.0)
-        end
+end
+
+function DayState:_keypressedAction(key)
+    if key == "space" then
+        if not self.ghost:isActive() then self:_attackPlayer(1.0, 1.0) end
     elseif key == "q" then
-        if not self.ghost:isActive() then
-            self:_useAbility()
-        end
+        if not self.ghost:isActive() then self:_useAbility() end
     elseif key == "lshift" or key == "rshift" then
         self:_startDash()
-    elseif key == "b" then
-        if self.ghost:isActive() then
-            self.ghost:cycleType()
-        else
-            self.ghost:activate(self.player.tx, self.player.ty)
-        end
-    elseif ARROW_CURSOR[key] then
-        if self.ghost:isActive() then
-            local d = ARROW_CURSOR[key]
-            self.ghost:moveCursor(d[1], d[2])
-        end
-    elseif key == "r" then
-        if self.ghost:isActive() then
-            local tx, ty = self.ghost:cursorTile()
-            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
-        end
     elseif key == "e" then
         if not self.ghost:isActive() then
             self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
@@ -888,6 +870,19 @@ function DayState:keypressed(key, scancode, isrepeat)
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
         end
+    end
+end
+
+function DayState:keypressed(key, scancode, isrepeat)
+    if isrepeat then return end
+    if key == "escape" then
+        if self.ghost:isActive() then self.ghost:deactivate()
+        else self.game.stateMachine:setState("menu") end
+    elseif key == "f3" then
+        self.debugMode = not self.debugMode
+    else
+        self:_keypressedBuild(key)
+        self:_keypressedAction(key)
     end
 end
 
