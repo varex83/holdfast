@@ -9,6 +9,7 @@ ignore = {
     "212", -- unused argument
     "213", -- unused loop variable
     "631", -- line is too long
+    "142", -- setting read-only field (love.load, love.update, etc. is the Love2D pattern)
 }
 
 -- Files and directories to exclude
