@@ -37,6 +37,8 @@ end
 
 -- Convert stick/screen direction to iso tile direction.
 -- Uses the same matrix as player movement: dtx = sx/hw + sy/hh, dty = sy/hh - sx/hw.
+local ARROW_CURSOR = { up={-1,-1}, down={1,1}, left={-1,1}, right={1,-1} }
+
 local function screenDirToTile(sx, sy)
     local hw, hh = 32, 16
     local dtx = sx / hw + sy / hh
@@ -618,8 +620,6 @@ function DayState:keypressed(key, scancode, isrepeat)
         else
             self.game.stateMachine:setState("menu")
         end
-    elseif key == "space" then
-        self.game.stateMachine:setState("night")
     elseif key == "f3" then
         self.debugMode = not self.debugMode
     elseif key == "b" then
@@ -628,14 +628,11 @@ function DayState:keypressed(key, scancode, isrepeat)
         else
             self.ghost:activate(self.player.tx, self.player.ty)
         end
-    elseif key == "up" then
-        if self.ghost:isActive() then self.ghost:moveCursor(-1, -1) end
-    elseif key == "down" then
-        if self.ghost:isActive() then self.ghost:moveCursor( 1,  1) end
-    elseif key == "left" then
-        if self.ghost:isActive() then self.ghost:moveCursor(-1,  1) end
-    elseif key == "right" then
-        if self.ghost:isActive() then self.ghost:moveCursor( 1, -1) end
+    elseif ARROW_CURSOR[key] then
+        if self.ghost:isActive() then
+            local d = ARROW_CURSOR[key]
+            self.ghost:moveCursor(d[1], d[2])
+        end
     elseif key == "r" then
         if self.ghost:isActive() then
             local tx, ty = self.ghost:cursorTile()
@@ -659,8 +656,6 @@ function DayState:gamepadPressed(joystick, button)
         else
             self.game.stateMachine:setState("menu")
         end
-    elseif button == "y" then
-        self.game.stateMachine:setState("night")
     elseif button == "rightshoulder" then
         if self.ghost:isActive() then
             self.ghost:cycleType()

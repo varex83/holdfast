@@ -13,7 +13,7 @@ function BuildManager:new(eventBus)
     self._grid      = {}   -- "tx,ty" -> Building
 end
 
--- ─── Helpers ─────────────────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 local function key(tx, ty)
     return tx .. "," .. ty
@@ -27,29 +27,45 @@ function BuildManager:getAt(tx, ty)
     return self._grid[key(tx, ty)]
 end
 
--- ─── Cost helpers ─────────────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Cost helpers в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-function BuildManager:canAfford(btype, depot)
+function BuildManager:canAfford(btype, depot, inventory)
     local def = Buildings[btype]
     if not def then return false end
     for rtype, amt in pairs(def.cost) do
-        if not depot:has(rtype, amt) then return false end
+        local depotCount = depot and depot:count(rtype) or 0
+        local invCount = inventory and inventory:count(rtype) or 0
+        if depotCount + invCount < amt then return false end
     end
     return true
 end
 
--- ─── Placement ────────────────────────────────────────────────────────────────
+local function deductCost(def, depot, inventory)
+    for rtype, amt in pairs(def.cost) do
+        local remaining = amt
+        if depot and remaining > 0 then
+            local fromDepot = math.min(remaining, depot:count(rtype))
+            if fromDepot > 0 then
+                depot:remove(rtype, fromDepot)
+                remaining = remaining - fromDepot
+            end
+        end
+        if inventory and remaining > 0 then
+            inventory:remove(rtype, remaining)
+        end
+    end
+end
+
+-- в”Ђв”Ђв”Ђ Placement в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 -- Place a building at (tx, ty). Deducts cost from depot.
 -- Returns true on success.
-function BuildManager:place(btype, tx, ty, depot)
+function BuildManager:place(btype, tx, ty, depot, inventory)
     if self:isOccupied(tx, ty) then return false end
-    if not self:canAfford(btype, depot) then return false end
+    if not self:canAfford(btype, depot, inventory) then return false end
 
     local def = Buildings[btype]
-    for rtype, amt in pairs(def.cost) do
-        depot:remove(rtype, amt)
-    end
+    deductCost(def, depot, inventory)
 
     local b = Building(btype, tx, ty)
     self._buildings[#self._buildings + 1] = b
@@ -80,7 +96,7 @@ function BuildManager:remove(tx, ty)
     return true
 end
 
--- ─── Query ────────────────────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Query в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function BuildManager:getAll()
     return self._buildings
@@ -93,7 +109,7 @@ function BuildManager:getBaseCore()
     end
 end
 
--- ─── Draw ─────────────────────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Draw в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 -- Draw all buildings visible through fog, sorted by screen Y.
 function BuildManager:draw(fog)
