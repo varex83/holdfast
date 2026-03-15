@@ -370,7 +370,8 @@ function AssetManagerState:drawAnimationPreview(panel)
 
     local stateDef = setDef.states[self.previewAnimationState] or setDef.states.idle or setDef.states.walk or setDef.states.attack
     if not stateDef then
-        _, stateDef = next(setDef.states or {})
+        local _k
+        _k, stateDef = next(setDef.states or {})
     end
     if not stateDef then
         return
@@ -792,24 +793,42 @@ function AssetManagerState:_buildAnimationFields(setDef)
     }
 end
 
+function AssetManagerState:_buildImageFields(def)
+    return {
+        self:readOnlyField("Path",       def and def.path      or ""),
+        self:readOnlyField("Filter",     def and def.filter    or "default"),
+        self:readOnlyField("Min Filter", def and def.minFilter or "-"),
+        self:readOnlyField("Mag Filter", def and def.magFilter or "-"),
+    }
+end
+
+function AssetManagerState:_buildAtlasFields(def)
+    return {
+        self:readOnlyField("Path",        def and (def.path or def.image) or ""),
+        self:readOnlyField("Tile Width",  tostring(def and def.tileWidth  or "")),
+        self:readOnlyField("Tile Height", tostring(def and def.tileHeight or "")),
+        self:readOnlyField("Filter",      def and def.filter or "default"),
+    }
+end
+
+function AssetManagerState:_buildTilemapFields(def)
+    return {
+        self:readOnlyField("Path",          def and def.path or ""),
+        self:readOnlyField("Format",        def and def.format or ""),
+        self:readOnlyField("Layer",         def and tostring(def.layer or "auto") or ""),
+        self:readOnlyField("Default Tile",  def and tostring(def.defaultTileType or "") or ""),
+        self:readOnlyField("Out of Bounds", def and tostring(def.outOfBoundsTileType or "") or ""),
+    }
+end
+
 function AssetManagerState:getEditableFields()
     if self.category == "images" then
         local _, def = self:getCurrentImage()
-        return {
-            self:readOnlyField("Path",       def and def.path   or ""),
-            self:readOnlyField("Filter",     def and def.filter or "default"),
-            self:readOnlyField("Min Filter", def and def.minFilter or "-"),
-            self:readOnlyField("Mag Filter", def and def.magFilter or "-"),
-        }
+        return self:_buildImageFields(def)
     end
     if self.category == "atlases" then
         local _, def = self:getCurrentAtlas()
-        return {
-            self:readOnlyField("Path",         def and (def.path or def.image) or ""),
-            self:readOnlyField("Tile Width",   tostring(def and def.tileWidth  or "")),
-            self:readOnlyField("Tile Height",  tostring(def and def.tileHeight or "")),
-            self:readOnlyField("Filter",       def and def.filter or "default"),
-        }
+        return self:_buildAtlasFields(def)
     end
     if self.category == "animations" then
         local _, setDef = self:getCurrentAnimationSet()
@@ -817,13 +836,7 @@ function AssetManagerState:getEditableFields()
     end
     if self.category == "tilemaps" then
         local _, def = self:getCurrentTilemap()
-        return {
-            self:readOnlyField("Path",          def and def.path or ""),
-            self:readOnlyField("Format",        def and def.format or ""),
-            self:readOnlyField("Layer",         def and tostring(def.layer or "auto") or ""),
-            self:readOnlyField("Default Tile",  def and tostring(def.defaultTileType or "") or ""),
-            self:readOnlyField("Out of Bounds", def and tostring(def.outOfBoundsTileType or "") or ""),
-        }
+        return self:_buildTilemapFields(def)
     end
     local _, tileDef = self:getCurrentTile()
     return self:_buildTileFields(tileDef)
@@ -1026,21 +1039,25 @@ function AssetManagerState:_beginAnimationDrag(x, y, preview)
     end
 end
 
+function AssetManagerState:_beginCircleDrag(x, y, preview, collision)
+    local handles = preview.handles or {}
+    if handles.radius and self:isInside(x, y, handles.radius) then
+        self.drag = { type = "tile-circle-radius", cx = preview.cx, cy = preview.cy }
+    elseif handles.move and self:isInside(x, y, handles.move) then
+        self.drag = {
+            type = "tile-circle-move", startX = x, startY = y,
+            offsetX = ensureNumber(collision.offsetX, 0),
+            offsetY = ensureNumber(collision.offsetY, 0),
+        }
+    end
+end
+
 function AssetManagerState:_beginTileDrag(x, y, preview)
     local _, tileDef = self:getCurrentTile()
     tileDef.collision = tileDef.collision or { shape = "none" }
     local collision = tileDef.collision
     if collision.shape == "circle" then
-        local handles = preview.handles or {}
-        if handles.radius and self:isInside(x, y, handles.radius) then
-            self.drag = { type = "tile-circle-radius", cx = preview.cx, cy = preview.cy }
-        elseif handles.move and self:isInside(x, y, handles.move) then
-            self.drag = {
-                type = "tile-circle-move", startX = x, startY = y,
-                offsetX = ensureNumber(collision.offsetX, 0),
-                offsetY = ensureNumber(collision.offsetY, 0),
-            }
-        end
+        self:_beginCircleDrag(x, y, preview, collision)
         return
     end
     if collision.shape == "box" then
