@@ -24,18 +24,25 @@ local Constants      = require("data.constants")
 local DayState = Class:extend()
 
 local CLASS_WORLD_VISUALS = {
-    [Constants.CLASS.WARRIOR] = {appearance = "soldier", tint = {1.0, 1.0, 1.0, 1}},
-    [Constants.CLASS.ARCHER] = {appearance = "soldier", tint = {1.0, 0.96, 0.90, 1}},
-    [Constants.CLASS.ENGINEER] = {appearance = "orc", tint = {0.90, 0.92, 1.0, 1}},
-    [Constants.CLASS.SCOUT] = {appearance = "soldier", tint = {0.82, 1.0, 0.90, 1}},
+    [Constants.CLASS.WARRIOR]  = { appearance = "soldier", tint = {1.0, 1.0, 1.0, 1} },
+    [Constants.CLASS.ARCHER]   = { appearance = "soldier", tint = {1.0, 0.96, 0.90, 1} },
+    [Constants.CLASS.ENGINEER] = { appearance = "orc",     tint = {0.90, 0.92, 1.0, 1} },
+    [Constants.CLASS.SCOUT]    = { appearance = "soldier", tint = {0.82, 1.0, 0.90, 1} },
 }
 
 local function compareEntityDrawEntries(a, b)
-    if a.sy == b.sy then
-        return (a.order or 0) < (b.order or 0)
-    end
-
+    if a.sy == b.sy then return (a.order or 0) < (b.order or 0) end
     return a.sy < b.sy
+end
+
+-- Convert stick/screen direction to iso tile direction.
+-- Uses the same matrix as player movement: dtx = sx/hw + sy/hh, dty = sy/hh - sx/hw.
+local function screenDirToTile(sx, sy)
+    local hw, hh = 32, 16
+    local dtx = sx / hw + sy / hh
+    local dty = sy / hh - sx / hw
+    return dtx > 0 and 1 or (dtx < 0 and -1 or 0),
+           dty > 0 and 1 or (dty < 0 and -1 or 0)
 end
 
 function DayState:new(game)
@@ -72,7 +79,7 @@ function DayState:new(game)
     self.inventory       = Inventory(self.playerClass)
 
     self.depot = SupplyDepot(2, 2, game.eventBus)
-    self.depot:add("wood", 20)
+    self.depot:add("wood",  20)
     self.depot:add("stone", 10)
 
     self.buildings = BuildManager(game.eventBus)
@@ -80,7 +87,10 @@ function DayState:new(game)
     self.ghost = BuildGhost()
     self.hud   = HUD()
 
-    self.debugMode = false
+    self.debugMode      = false
+    self._stickCooldown = 0
+    self._prevMouse     = { x = -1, y = -1 }
+
     self.player.speed = self.playerCharacter.stats:getSpeed()
 end
 
@@ -107,7 +117,7 @@ end
 
 function DayState:_setPlayerClass(classType)
     local resolvedClass = classType or self.playerClass or Constants.CLASS.WARRIOR
-    local classChanged = resolvedClass ~= self.playerClass or not self.playerCharacter
+    local classChanged  = resolvedClass ~= self.playerClass or not self.playerCharacter
 
     self.playerClass = resolvedClass
     if classChanged then
@@ -127,7 +137,7 @@ end
 function DayState:_updateMovement(dt)
     local sdx, sdy = self.game.input:getMoveVector()
     if sdx ~= 0 or sdy ~= 0 then
-        local spd = self.player.speed * dt
+        local spd    = self.player.speed * dt
         local hw, hh = 32, 16
         local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
         local dty = (sdy * spd / hh - sdx * spd / hw) / 2
@@ -150,7 +160,20 @@ end
 
 function DayState:_updateCamera(dt)
     local rx, ry = self.game.input:getRightStick()
-    if math.abs(rx) > 0 or math.abs(ry) > 0 then
+
+    if self.ghost:isActive() then
+        -- Right stick drives build cursor instead of camera
+        self._stickCooldown = self._stickCooldown - dt
+        if self._stickCooldown <= 0 and (math.abs(rx) > 0.4 or math.abs(ry) > 0.4) then
+            local ctx, cty = screenDirToTile(rx, ry)
+            if ctx ~= 0 or cty ~= 0 then
+                self.ghost:moveCursor(ctx, cty)
+                self._stickCooldown = 0.15
+            end
+        end
+        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+        self.camera:follow(px, py)
+    elseif math.abs(rx) > 0 or math.abs(ry) > 0 then
         self.camera.x = self.camera.x + rx * 300 * dt
         self.camera.y = self.camera.y + ry * 300 * dt
     else
@@ -161,13 +184,23 @@ function DayState:_updateCamera(dt)
     self.camera:update(dt)
 end
 
+function DayState:_updateBuildCursor()
+    if not self.ghost:isActive() then return end
+    local mx, my = love.mouse.getPosition()
+    if mx ~= self._prevMouse.x or my ~= self._prevMouse.y then
+        self._prevMouse.x = mx
+        self._prevMouse.y = my
+        self.ghost:updateFromMouse(self.camera)
+    end
+end
+
 function DayState:_updateWorld()
     self.chunks:update(self.player.tx, self.player.ty)
     self.fog:update(self.player.tx, self.player.ty)
 
     local ptx = math.floor(self.player.tx + 0.5)
     local pty = math.floor(self.player.ty + 0.5)
-    local r = FogOfWar.VISION_RADIUS
+    local r   = FogOfWar.VISION_RADIUS
     for ddx = -r, r do
         for ddy = -r, r do
             if ddx * ddx + ddy * ddy <= r * r then
@@ -184,7 +217,7 @@ function DayState:_updateWorld()
 end
 
 function DayState:update(dt)
-    self.timeRemaining = self.timeRemaining - dt
+    self.timeRemaining  = self.timeRemaining - dt
     self.game.timeOfDay = self.timeRemaining
 
     if self.timeRemaining <= 0 then
@@ -194,15 +227,14 @@ function DayState:update(dt)
 
     self:_updateMovement(dt)
     self:_updateCamera(dt)
+    self:_updateBuildCursor()
     self:_updateWorld()
 
     self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
     self.respawn:update(dt)
     self.playerCharacter:updateVisuals(dt)
 
-    if self.game.world then
-        self.game.world:update(dt)
-    end
+    if self.game.world then self.game.world:update(dt) end
 end
 
 function DayState:_ensureValidSpawn()
@@ -215,9 +247,7 @@ function DayState:_findNearestWalkableTile(originTx, originTy)
     local startTx = math.floor(originTx + 0.5)
     local startTy = math.floor(originTy + 0.5)
 
-    if self:_canMoveTo(startTx, startTy) then
-        return startTx, startTy
-    end
+    if self:_canMoveTo(startTx, startTy) then return startTx, startTy end
 
     for radius = 1, 12 do
         for dx = -radius, radius do
@@ -225,9 +255,7 @@ function DayState:_findNearestWalkableTile(originTx, originTy)
                 if math.abs(dx) == radius or math.abs(dy) == radius then
                     local tx = startTx + dx
                     local ty = startTy + dy
-                    if self:_canMoveTo(tx, ty) then
-                        return tx, ty
-                    end
+                    if self:_canMoveTo(tx, ty) then return tx, ty end
                 end
             end
         end
@@ -256,8 +284,8 @@ function DayState:_canMoveTo(tx, ty)
         end
 
         local tileType = self.chunks:getTile(tileX, tileY)
-        local localX = point[1] - tileX
-        local localY = point[2] - tileY
+        local localX   = point[1] - tileX
+        local localY   = point[2] - tileY
         if tileType and not Tile.isPointWalkable(tileType, localX, localY) then
             return false
         end
@@ -276,13 +304,8 @@ function DayState:_movePlayer(dtx, dty)
         return
     end
 
-    if self:_canMoveTo(targetTx, self.player.ty) then
-        self.player.tx = targetTx
-    end
-
-    if self:_canMoveTo(self.player.tx, targetTy) then
-        self.player.ty = targetTy
-    end
+    if self:_canMoveTo(targetTx, self.player.ty) then self.player.tx = targetTx end
+    if self:_canMoveTo(self.player.tx, targetTy) then self.player.ty = targetTy end
 end
 
 function DayState:_getMovementSamplePoints(tx, ty)
@@ -299,34 +322,25 @@ end
 function DayState:_getPropOpacity(image, tx, ty)
     local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
     local osx, osy = Iso.tileToScreen(tx, ty)
-    local iw, ih = image:getDimensions()
+    local iw, ih   = image:getDimensions()
 
-    local propLeft = osx - iw * 0.5
-    local propRight = osx + iw * 0.5
-    local propTop = osy + Iso.TILE_H * 0.5 - ih
+    local propLeft   = osx - iw * 0.5
+    local propRight  = osx + iw * 0.5
+    local propTop    = osy + Iso.TILE_H * 0.5 - ih
     local propBottom = osy + Iso.TILE_H * 0.5
 
-    local playerWidth = 28
-    local playerTop = psy - 42
+    local playerWidth  = 28
+    local playerTop    = psy - 42
     local playerBottom = psy + 18
 
-    local overlapsHorizontally = (psx + playerWidth * 0.5) > propLeft and (psx - playerWidth * 0.5) < propRight
-    local overlapsVertically = playerBottom > propTop and playerTop < propBottom
+    local overH = (psx + playerWidth * 0.5) > propLeft and (psx - playerWidth * 0.5) < propRight
+    local overV = playerBottom > propTop and playerTop < propBottom
 
-    if overlapsHorizontally and overlapsVertically and psy < propBottom then
-        return 0.5
-    end
-
+    if overH and overV and psy < propBottom then return 0.5 end
     return 1
 end
 
-function DayState:_ghostTile()
-    local ptx = math.floor(self.player.tx + 0.5)
-    local pty = math.floor(self.player.ty + 0.5)
-    return ptx + self.player.ftx, pty + self.player.fty
-end
-
--- Returns tile rect {x1,y1,x2,y2} covering the visible screen area.
+-- Returns tile bounds covering the visible screen.
 function DayState:_visibleTileRect()
     local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
     local corners = {
@@ -346,7 +360,7 @@ function DayState:_visibleTileRect()
     end
     local m = 6
     return math.floor(txMin) - m, math.floor(tyMin) - m,
-           math.ceil(txMax) + m, math.ceil(tyMax) + m
+           math.ceil(txMax)  + m, math.ceil(tyMax)  + m
 end
 
 -- Builds the sorted list of explored tiles to draw this frame.
@@ -358,10 +372,10 @@ function DayState:_buildDrawList(x1, y1, x2, y2)
             if state ~= "hidden" then
                 local tileType = state == "visible"
                     and self.chunks:getTile(tx, ty)
-                    or self.fog:getCachedType(tx, ty)
+                    or  self.fog:getCachedType(tx, ty)
                 if tileType then
                     local _, sy = Iso.tileToScreen(tx, ty)
-                    list[#list + 1] = {sy = sy, tx = tx, ty = ty, t = tileType, visible = (state == "visible")}
+                    list[#list + 1] = { sy = sy, tx = tx, ty = ty, t = tileType, visible = (state == "visible") }
                 end
             end
         end
@@ -376,13 +390,8 @@ function DayState:_drawTileGround(entry, renderData, dim)
         Iso.drawTexturedTile(
             renderData.ground.image,
             renderData.ground.quad,
-            entry.tx,
-            entry.ty,
-            tint[1] * dim,
-            tint[2] * dim,
-            tint[3] * dim,
-            1
-        )
+            entry.tx, entry.ty,
+            tint[1] * dim, tint[2] * dim, tint[3] * dim, 1)
         return
     end
 
@@ -391,53 +400,42 @@ function DayState:_drawTileGround(entry, renderData, dim)
 end
 
 function DayState:_queueTileOverlay(entry, renderData, dim, entityDrawList)
-    if not renderData or not renderData.overlay then
-        return
-    end
+    if not renderData or not renderData.overlay then return end
 
     local overlay = renderData.overlay
-    local tint = overlay.tint
+    local tint    = overlay.tint
     local opacity = self:_getPropOpacity(overlay.image, entry.tx, entry.ty)
     entityDrawList[#entityDrawList + 1] = {
-        sy = entry.sy + Iso.TILE_H,
+        sy    = entry.sy + Iso.TILE_H,
         order = 10,
-        draw = function()
+        draw  = function()
             Iso.drawProp(overlay.image, entry.tx, entry.ty, {
                 scale = overlay.scale,
-                r = tint[1] * dim,
-                g = tint[2] * dim,
-                b = tint[3] * dim,
-                a = opacity,
+                r = tint[1] * dim, g = tint[2] * dim, b = tint[3] * dim, a = opacity,
             })
         end
     }
 end
 
 function DayState:_drawVisibleTileOutline(entry)
-    if not entry.visible then
-        return
-    end
-
+    if not entry.visible then return end
     local sx, sy = Iso.tileToScreen(entry.tx, entry.ty)
     love.graphics.setColor(0, 0, 0, 0.12)
     love.graphics.polygon("line",
         sx, sy,
         sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
         sx, sy + Iso.TILE_H,
-        sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5
-    )
+        sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
 end
 
 function DayState:_drawTerrain(drawList, worldTime, entityDrawList)
     for _, entry in ipairs(drawList) do
-        local dim = entry.visible and 1 or 0.5
+        local dim        = entry.visible and 1 or 0.5
         local renderData = Tile.getRenderData(entry.t, entry.tx, entry.ty, worldTime)
-
         self:_drawTileGround(entry, renderData, dim)
         self:_queueTileOverlay(entry, renderData, dim, entityDrawList)
         self:_drawVisibleTileOutline(entry)
     end
-
     love.graphics.setColor(1, 1, 1, 1)
 end
 
@@ -445,11 +443,9 @@ function DayState:_queueVisibleBuildingDraws(entityDrawList)
     for _, building in ipairs(self.buildings:getAll()) do
         if self.fog:getState(building.tx, building.ty) ~= "hidden" then
             entityDrawList[#entityDrawList + 1] = {
-                sy = building:screenY(),
+                sy    = building:screenY(),
                 order = 20,
-                draw = function()
-                    building:draw()
-                end
+                draw  = function() building:draw() end
             }
         end
     end
@@ -467,11 +463,9 @@ function DayState:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
         if self:_shouldDrawNode(node, x1, y1, x2, y2) then
             local _, sy = Iso.tileToScreen(node.tx, node.ty)
             entityDrawList[#entityDrawList + 1] = {
-                sy = sy,
+                sy    = sy,
                 order = 30,
-                draw = function()
-                    node:draw()
-                end
+                draw  = function() node:draw() end
             }
         end
     end
@@ -485,17 +479,12 @@ function DayState:_drawDepot()
 end
 
 function DayState:_queueDepotDraw(entityDrawList)
-    if self.fog:getState(self.depot.tx, self.depot.ty) == "hidden" then
-        return
-    end
-
+    if self.fog:getState(self.depot.tx, self.depot.ty) == "hidden" then return end
     local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
     entityDrawList[#entityDrawList + 1] = {
-        sy = depotSy,
+        sy    = depotSy,
         order = 40,
-        draw = function()
-            self:_drawDepot()
-        end
+        draw  = function() self:_drawDepot() end
     }
 end
 
@@ -504,20 +493,15 @@ function DayState:_queuePlayerDraw(entityDrawList)
     self.playerCharacter.position.x = psx
     self.playerCharacter.position.y = psy + 2
     entityDrawList[#entityDrawList + 1] = {
-        sy = psy + 18,
+        sy    = psy + 18,
         order = 50,
-        draw = function()
-            self.playerCharacter:draw()
-        end
+        draw  = function() self.playerCharacter:draw() end
     }
 end
 
 function DayState:_sortAndDrawEntities(entityDrawList)
     table.sort(entityDrawList, compareEntityDrawEntries)
-
-    for _, entry in ipairs(entityDrawList) do
-        entry.draw()
-    end
+    for _, entry in ipairs(entityDrawList) do entry.draw() end
 end
 
 function DayState:draw()
@@ -526,9 +510,9 @@ function DayState:draw()
     self.camera:apply()
 
     local x1, y1, x2, y2 = self:_visibleTileRect()
-    local drawList = self:_buildDrawList(x1, y1, x2, y2)
-    local worldTime = love.timer.getTime()
-    local entityDrawList = {}
+    local drawList        = self:_buildDrawList(x1, y1, x2, y2)
+    local worldTime       = love.timer.getTime()
+    local entityDrawList  = {}
 
     self:_drawTerrain(drawList, worldTime, entityDrawList)
     self:_queueVisibleBuildingDraws(entityDrawList)
@@ -539,21 +523,15 @@ function DayState:draw()
 
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
     self.harvest:draw()
+    self.ghost:draw(self.buildings, self.depot)
 
-    local gtx, gty = self:_ghostTile()
-    self.ghost:draw(gtx, gty, self.buildings, self.depot)
-
-    if self.debugMode then
-        self:drawDebugWorld(drawList)
-    end
+    if self.debugMode then self:drawDebugWorld(drawList) end
 
     self.camera:clear()
 
     self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost)
 
-    if self.debugMode then
-        self:drawDebugUI()
-    end
+    if self.debugMode then self:drawDebugUI() end
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -565,8 +543,8 @@ function DayState:drawDebugWorld(drawList)
             if def and def.collision and def.collision.shape == "circle" then
                 local offsetX = def.collision.offsetX or 0
                 local offsetY = def.collision.offsetY or 0
-                local sx, sy = Iso.tileToScreen(e.tx + offsetX, e.ty + offsetY)
-                local radius = def.collision.radius * Iso.TILE_W
+                local sx, sy  = Iso.tileToScreen(e.tx + offsetX, e.ty + offsetY)
+                local radius  = def.collision.radius * Iso.TILE_W
                 love.graphics.setColor(1, 0.45, 0.15, 0.8)
                 love.graphics.circle("line", sx, sy + Iso.TILE_H * 0.5, radius)
             elseif e.t == "water" then
@@ -576,8 +554,7 @@ function DayState:drawDebugWorld(drawList)
                     sx, sy,
                     sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
                     sx, sy + Iso.TILE_H,
-                    sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5
-                )
+                    sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
             end
         end
     end
@@ -596,8 +573,9 @@ function DayState:drawDebugWorld(drawList)
 end
 
 function DayState:drawDebugUI()
-    local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
-    local tileType = self.chunks:getTile(math.floor(self.player.tx + 0.5), math.floor(self.player.ty + 0.5))
+    local px, py     = Iso.tileToScreen(self.player.tx, self.player.ty)
+    local tileType   = self.chunks:getTile(
+        math.floor(self.player.tx + 0.5), math.floor(self.player.ty + 0.5))
     local lines = {
         "=== WORLD DEBUG ===",
         string.format("Tile Pos: %.2f, %.2f", self.player.tx, self.player.ty),
@@ -608,10 +586,10 @@ function DayState:drawDebugUI()
         "F3: Toggle World Debug",
     }
 
-    local panelX = love.graphics.getWidth() - 250
-    local panelY = 20
+    local panelX     = love.graphics.getWidth() - 250
+    local panelY     = 20
     local lineHeight = 18
-    local panelH = 16 + #lines * lineHeight
+    local panelH     = 16 + #lines * lineHeight
 
     love.graphics.setFont(self.smallFont)
     love.graphics.setColor(0, 0, 0, 0.72)
@@ -629,9 +607,7 @@ end
 
 function DayState:_countLoadedChunks()
     local count = 0
-    for _ in pairs(self.chunks._chunks) do
-        count = count + 1
-    end
+    for _ in pairs(self.chunks._chunks) do count = count + 1 end
     return count
 end
 
@@ -650,11 +626,19 @@ function DayState:keypressed(key, scancode, isrepeat)
         if self.ghost:isActive() then
             self.ghost:cycleType()
         else
-            self.ghost:activate()
+            self.ghost:activate(self.player.tx, self.player.ty)
         end
+    elseif key == "up" then
+        if self.ghost:isActive() then self.ghost:moveCursor(-1, -1) end
+    elseif key == "down" then
+        if self.ghost:isActive() then self.ghost:moveCursor( 1,  1) end
+    elseif key == "left" then
+        if self.ghost:isActive() then self.ghost:moveCursor(-1,  1) end
+    elseif key == "right" then
+        if self.ghost:isActive() then self.ghost:moveCursor( 1, -1) end
     elseif key == "r" then
         if self.ghost:isActive() then
-            local tx, ty = self:_ghostTile()
+            local tx, ty = self.ghost:cursorTile()
             self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
         end
     elseif key == "e" then
@@ -681,11 +665,11 @@ function DayState:gamepadPressed(joystick, button)
         if self.ghost:isActive() then
             self.ghost:cycleType()
         else
-            self.ghost:activate()
+            self.ghost:activate(self.player.tx, self.player.ty)
         end
     elseif button == "a" then
         if self.ghost:isActive() then
-            local tx, ty = self:_ghostTile()
+            local tx, ty = self.ghost:cursorTile()
             self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
         end
     elseif button == "x" then
