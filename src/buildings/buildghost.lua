@@ -1,6 +1,6 @@
 -- Build Ghost
--- Preview tile drawn one tile ahead of the player in their facing direction.
--- Pulses green (valid) or red (invalid).
+-- Shows a placement preview. Cursor can be moved via mouse, arrow keys,
+-- or gamepad right stick (handled externally via moveCursor / updateFromMouse).
 
 local Class     = require("lib.class")
 local AssetManager = require("src.core.assetmanager")
@@ -31,33 +31,58 @@ local BUILD_ORDER = { "wall", "gate", "campfire" }
 function BuildGhost:new()
     self._active     = false
     self._typeIndex  = 1
+    self._tx         = 0
+    self._ty         = 0
     self._labelFont  = love.graphics.newFont(11)
 end
 
 function BuildGhost:isActive()    return self._active end
 function BuildGhost:currentType() return BUILD_ORDER[self._typeIndex] end
+function BuildGhost:cursorTile()  return self._tx, self._ty end
 
-function BuildGhost:activate()   self._active = true end
-function BuildGhost:deactivate() self._active = false end
+function BuildGhost:activate(ptx, pty)
+    self._active = true
+    self._tx     = math.floor((ptx or 0) + 0.5)
+    self._ty     = math.floor((pty or 0) + 0.5)
+end
+
+function BuildGhost:deactivate()
+    self._active = false
+end
 
 function BuildGhost:cycleType()
     self._typeIndex = (self._typeIndex % #BUILD_ORDER) + 1
 end
 
--- Draw the ghost at tile (tx, ty).
-function BuildGhost:draw(tx, ty, buildManager, depot)
+-- Move cursor by (dx, dy) tiles.
+function BuildGhost:moveCursor(dx, dy)
+    self._tx = self._tx + dx
+    self._ty = self._ty + dy
+end
+
+-- Snap cursor to the tile currently under the mouse.
+-- `camera` is the Camera instance (provides screenToWorld).
+function BuildGhost:updateFromMouse(camera)
+    local mx, my      = love.mouse.getPosition()
+    local wx, wy      = camera:screenToWorld(mx, my)
+    local tx, ty      = Iso.screenToTile(wx, wy)
+    self._tx          = math.floor(tx + 0.5)
+    self._ty          = math.floor(ty + 0.5)
+end
+
+-- Draw the ghost at the cursor tile.
+function BuildGhost:draw(buildManager, depot)
     if not self._active then return end
 
     local btype = self:currentType()
     local def   = Buildings[btype]
-    local sx, sy = Iso.tileToScreen(tx, ty)
+    local sx, sy = Iso.tileToScreen(self._tx, self._ty)
 
-    local occupied   = buildManager:isOccupied(tx, ty)
+    local occupied   = buildManager:isOccupied(self._tx, self._ty)
     local affordable = buildManager:canAfford(btype, depot)
     local valid      = not occupied and affordable
 
     local pulse = 0.50 + 0.25 * math.sin(love.timer.getTime() * 5)
-
     if valid then
         love.graphics.setColor(0.2, 1.0, 0.2, pulse)
     else
@@ -104,7 +129,8 @@ function BuildGhost:draw(tx, ty, buildManager, depot)
         costParts[#costParts + 1] = amt .. " " .. rtype
     end
     love.graphics.setColor(0.8, 0.8, 0.3, 0.85)
-    love.graphics.print(#costParts > 0 and table.concat(costParts, ", ") or "free", sx - 36, sy - 10)
+    love.graphics.print(#costParts > 0 and table.concat(costParts, ", ") or "free",
+        sx - 36, sy - 10)
 end
 
 return BuildGhost
