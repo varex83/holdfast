@@ -37,6 +37,8 @@ end
 
 -- Convert stick/screen direction to iso tile direction.
 -- Uses the same matrix as player movement: dtx = sx/hw + sy/hh, dty = sy/hh - sx/hw.
+local ARROW_CURSOR = { up={-1,-1}, down={1,1}, left={-1,1}, right={1,-1} }
+
 local function screenDirToTile(sx, sy)
     local hw, hh = 32, 16
     local dtx = sx / hw + sy / hh
