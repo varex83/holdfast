@@ -30,7 +30,7 @@ function DayState:new(game)
     self.chunks = ChunkManager()
     self.fog    = FogOfWar()
 
-    self.player = { tx = 0.0, ty = 0.0, speed = 6 }
+    self.player = { tx = 0.0, ty = 0.0, speed = 200 }  -- pixels/sec on screen
 end
 
 function DayState:enter()
@@ -58,16 +58,20 @@ function DayState:update(dt)
     end
 
     -- Movement via input manager (keyboard + gamepad).
-    -- getMoveVector() returns screen-space axes: right=+sdx, down=+sdy.
-    -- Convert to isometric tile-space: dtx = sdx + sdy, dty = -sdx + sdy.
+    -- getMoveVector() returns normalised screen-space direction (right=+sdx, down=+sdy).
+    -- Convert to tile-space using iso projection inverse so screen speed is constant
+    -- regardless of direction (tiles are 64×32, so naive mapping would make
+    -- horizontal movement look twice as fast as vertical).
+    --   dtx = (sdx/HALF_W + sdy/HALF_H) / 2
+    --   dty = (sdy/HALF_H - sdx/HALF_W) / 2
     local sdx, sdy = self.game.input:getMoveVector()
-    local dx = sdx + sdy
-    local dy = -sdx + sdy
-
-    if dx ~= 0 or dy ~= 0 then
-        local len = math.sqrt(dx * dx + dy * dy)
-        self.player.tx = self.player.tx + (dx / len) * self.player.speed * dt
-        self.player.ty = self.player.ty + (dy / len) * self.player.speed * dt
+    if sdx ~= 0 or sdy ~= 0 then
+        local spd  = self.player.speed * dt
+        local hw, hh = 32, 16   -- TILE_W/2, TILE_H/2
+        local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
+        local dty = (sdy * spd / hh - sdx * spd / hw) / 2
+        self.player.tx = self.player.tx + dtx
+        self.player.ty = self.player.ty + dty
     end
 
     -- Right stick pans camera; otherwise camera follows player
