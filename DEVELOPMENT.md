@@ -46,6 +46,13 @@ make watch
 | `make package-linux` | Create Linux package |
 | `make package-windows` | Create Windows executable |
 
+### Libraries & Dependencies
+
+| Command | Description |
+|---------|-------------|
+| `make libs` | Show recommended libraries for common features |
+| `make find-lib FEATURE="..."` | Search for libraries by feature keyword |
+
 ### Utilities
 
 | Command | Description |
@@ -144,6 +151,111 @@ Press **F1** in-game to toggle the debug overlay showing:
 - Memory usage
 - Current game state
 - Player position
+
+## Library Discovery Workflow
+
+**IMPORTANT**: Always check for existing libraries before implementing functionality from scratch.
+
+### Quick Start
+
+```bash
+# Show recommended libraries for common features
+make libs
+
+# Search for specific functionality
+make find-lib FEATURE="collision"
+make find-lib FEATURE="pathfinding"
+make find-lib FEATURE="camera"
+```
+
+### Step-by-Step Process
+
+1. **Identify the need**
+   - "I need to add collision detection"
+   - "I need pathfinding for enemies"
+   - "I need to animate sprites"
+
+2. **Search for libraries**
+   ```bash
+   make find-lib FEATURE="collision"
+   ```
+
+3. **Review LIBRARIES.md**
+   - Open `LIBRARIES.md` and read the full section
+   - Check library stars, last update, license
+   - Read the "Recommendation for Holdfast" notes
+
+4. **Evaluate the library**
+   - Does it solve the exact problem?
+   - Is it actively maintained?
+   - Is it lightweight enough?
+   - Does it work with Love2D 11.5+?
+
+5. **Test before committing**
+   - Create a minimal test file
+   - Verify it works in your environment
+   - Check performance impact
+
+6. **Install and integrate**
+   ```bash
+   # Download to lib/ directory
+   cd lib/
+   curl -O https://raw.githubusercontent.com/user/repo/master/lib.lua
+
+   # Or use git submodule
+   git submodule add https://github.com/user/repo lib/libname
+   ```
+
+7. **Document the decision**
+   - Update `LIBRARIES.md` if you found a new library
+   - Add notes about why you chose it
+   - Update this README if it's a core dependency
+
+### Example Workflow
+
+```bash
+# Need: Collision detection for players and walls
+$ make find-lib FEATURE="collision"
+
+# Output shows:
+#   - box2d (too heavy, full physics)
+#   - bump.lua (perfect for AABB)
+#   - HC (good for circles/polygons)
+
+# Decision: Use bump.lua for simple AABB collision
+
+# Install
+$ cd lib/
+$ curl -O https://raw.githubusercontent.com/kikito/bump.lua/master/bump.lua
+
+# Use in code
+-- In your Lua file:
+local bump = require("lib.bump")
+```
+
+### Common Pitfalls to Avoid
+
+- **Don't reinvent the wheel** - Search first, implement last
+- **Don't add bloat** - Use lightweight libraries when possible
+- **Don't skip evaluation** - Test before committing to a library
+- **Don't ignore licenses** - Check MIT/Apache/BSD compatibility
+- **Don't use unmaintained libs** - Prefer active projects
+
+### When to Write Custom Code
+
+Write custom code when:
+- No suitable library exists
+- Existing libraries are too heavy/complex
+- You need very specific behavior
+- The feature is trivial (< 50 lines)
+
+### When to Use a Library
+
+Use a library when:
+- Complex algorithm (A*, physics, noise)
+- Well-tested solution exists
+- Standard pattern (ECS, tweening, animation)
+- Saves significant development time
 
 ## Project Structure
 

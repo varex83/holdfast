@@ -108,4 +108,18 @@ function StateMachine:wheelmoved(x, y)
     end
 end
 
+-- Forward gamepad button press to current state
+function StateMachine:gamepadPressed(joystick, button)
+    if self.currentState and self.states[self.currentState].gamepadPressed then
+        self.states[self.currentState]:gamepadPressed(joystick, button)
+    end
+end
+
+-- Forward gamepad button release to current state
+function StateMachine:gamepadReleased(joystick, button)
+    if self.currentState and self.states[self.currentState].gamepadReleased then
+        self.states[self.currentState]:gamepadReleased(joystick, button)
+    end
+end
+
 return StateMachine

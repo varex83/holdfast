@@ -6,6 +6,7 @@ local EventBus = require("src.core.eventbus")
 local StateMachine = require("src.core.statemachine")
 local World = require("src.ecs.world")
 local Debug = require("src.ui.debug")
+local InputManager = require("src.input.inputmanager")
 
 -- States
 local MenuState = require("src.states.menustate")
@@ -25,6 +26,7 @@ function Game:new()
     self.stateMachine = StateMachine(self.eventBus)
     self.world = World()
     self.debug = Debug.new(self)
+    self.input = InputManager.new()
 
     -- Game state
     self.dayCounter = 0
@@ -88,6 +90,9 @@ function Game:draw()
 end
 
 function Game:keypressed(key, scancode, isrepeat)
+    -- Notify input manager
+    self.input:notifyKeyPressed()
+
     -- Debug toggle
     if key == "f1" then
         self.debug:toggle()
@@ -112,6 +117,23 @@ end
 
 function Game:wheelmoved(x, y)
     self.stateMachine:wheelmoved(x, y)
+end
+
+function Game:joystickAdded(joystick)
+    self.input:joystickAdded(joystick)
+end
+
+function Game:joystickRemoved(joystick)
+    self.input:joystickRemoved(joystick)
+end
+
+function Game:gamepadPressed(joystick, button)
+    self.input:notifyGamepadPressed()
+    self.stateMachine:gamepadPressed(joystick, button)
+end
+
+function Game:gamepadReleased(joystick, button)
+    self.stateMachine:gamepadReleased(joystick, button)
 end
 
 function Game:quit()

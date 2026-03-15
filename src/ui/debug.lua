@@ -49,7 +49,7 @@ function Debug:draw()
 
     love.graphics.setFont(self.font)
     love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 10, 10, 300, 200)
+    love.graphics.rectangle("fill", 10, 10, 300, 240)
 
     love.graphics.setColor(0, 1, 0, 1)
     local y = 20
@@ -92,6 +92,18 @@ function Debug:draw()
     local mx, my = love.mouse.getPosition()
     love.graphics.print(string.format("Mouse: %d, %d", mx, my), 20, y)
     y = y + lineHeight
+
+    -- Controller info
+    if self.game and self.game.input then
+        local hasController = self.game.input:hasController()
+        love.graphics.print("Controller: " .. (hasController and "Connected" or "None"), 20, y)
+        y = y + lineHeight
+
+        if hasController then
+            love.graphics.print("Name: " .. self.game.input:getControllerName(), 20, y)
+            y = y + lineHeight
+        end
+    end
 
     -- Controls hint
     y = y + lineHeight

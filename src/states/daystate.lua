@@ -76,16 +76,26 @@ function DayState:update(dt)
         return
     end
 
-    -- Placeholder player movement (WASD in isometric tile space)
-    local moved = false
-    if love.keyboard.isDown("w") then self.player.ty = self.player.ty - self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("s") then self.player.ty = self.player.ty + self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("a") then self.player.tx = self.player.tx - self.player.speed * dt; moved = true end
-    if love.keyboard.isDown("d") then self.player.tx = self.player.tx + self.player.speed * dt; moved = true end
+    -- Player movement using input manager (supports both keyboard and gamepad)
+    local dx, dy = self.game.input:getMoveVector()
+    if dx ~= 0 or dy ~= 0 then
+        self.player.tx = self.player.tx + dx * self.player.speed * dt
+        self.player.ty = self.player.ty + dy * self.player.speed * dt
+    end
 
-    -- Camera follows player (in screen space)
-    local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
-    self.camera:follow(px, py)
+    -- Right stick camera control (gamepad only)
+    local rx, ry = self.game.input:getRightStick()
+    if math.abs(rx) > 0 or math.abs(ry) > 0 then
+        -- Move camera in screen space (not tile space)
+        local cameraSpeed = 300  -- pixels per second
+        self.camera.x = self.camera.x + rx * cameraSpeed * dt
+        self.camera.y = self.camera.y + ry * cameraSpeed * dt
+    else
+        -- Camera follows player (in screen space) when right stick not used
+        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+        self.camera:follow(px, py)
+    end
+
     self.camera:update(dt)
 
     -- ECS world update
@@ -142,8 +152,18 @@ function DayState:draw()
 
     love.graphics.setFont(self.smallFont)
     love.graphics.print(string.format("Tile: (%.0f, %.0f)", self.player.tx, self.player.ty), 20, 84)
-    love.graphics.print("WASD: move  |  Scroll: zoom  |  SPACE: skip to night  |  ESC: menu",
-        20, love.graphics.getHeight() - 22)
+
+    -- Dynamic control hints based on input device
+    local input = self.game.input
+    local controls
+    if input:isUsingGamepad() then
+        controls = "Left Stick: move  |  Right Stick: camera  |  " ..
+                   input:getControlPrompt("space", "y", "skip to night") .. "  |  " ..
+                   input:getControlPrompt("esc", "b", "menu")
+    else
+        controls = "WASD: move  |  Scroll: zoom  |  SPACE: skip to night  |  ESC: menu"
+    end
+    love.graphics.print(controls, 20, love.graphics.getHeight() - 22)
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -152,6 +172,18 @@ function DayState:keypressed(key, scancode, isrepeat)
     if key == "escape" then
         self.game.stateMachine:setState("menu")
     elseif key == "space" then
+        self.game.stateMachine:setState("night")
+    end
+end
+
+function DayState:gamepadPressed(joystick, button)
+    print("DayState: gamepad button pressed: " .. button)  -- Debug output
+
+    -- B button (Circle on DualSense) opens menu
+    if button == "b" then
+        self.game.stateMachine:setState("menu")
+    -- Y button (Triangle on DualSense) skips to night
+    elseif button == "y" then
         self.game.stateMachine:setState("night")
     end
 end

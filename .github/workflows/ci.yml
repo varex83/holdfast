@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: Lint and Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Lua
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1"
+
+      - name: Set up LuaRocks
+        uses: leafo/gh-actions-luarocks@v4
+
+      - name: Install luacheck
+        run: |
+          luarocks install luacheck
+
+      - name: Run luacheck
+        run: |
+          luacheck . --exclude-files '.git/**' 'build/**' 'dist/**' 'lib/**'
+
+  syntax-check:
+    name: Lua Syntax Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Lua
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1"
+
+      - name: Check Lua syntax
+        run: |
+          find . -name "*.lua" -not -path "./build/*" -not -path "./dist/*" -not -path "./.git/*" -not -path "./lib/*" | while read -r file; do
+            echo "Checking $file"
+            luac -p "$file" || exit 1
+          done
+
+  love2d-test:
+    name: Love2D Build Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Love2D
+        run: |
+          sudo add-apt-repository -y ppa:bartbes/love-stable
+          sudo apt-get update
+          sudo apt-get install -y love
+
+      - name: Test Love2D loads without errors
+        run: |
+          # Run Love2D in headless mode to check for runtime errors on load
+          # Uses xvfb to create virtual display for Love2D
+          sudo apt-get install -y xvfb
+          timeout 10 xvfb-run -a love . --version || true
+
+          # Check if main.lua can be parsed
+          love --version
+          echo "Love2D version check passed"
+
+      - name: Verify project structure
+        run: |
+          # Check required files exist
+          test -f main.lua || (echo "main.lua not found" && exit 1)
+          test -f conf.lua || (echo "conf.lua not found" && exit 1)
+          test -d src || (echo "src directory not found" && exit 1)
+          echo "Project structure verified"

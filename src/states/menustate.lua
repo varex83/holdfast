@@ -75,6 +75,20 @@ function MenuState:draw()
     love.graphics.setColor(0.5, 0.5, 0.5, 1)
     love.graphics.print("v0.1.0-alpha - Phase 0", 10, love.graphics.getHeight() - 30)
 
+    -- Control hints
+    local input = self.game.input
+    local controls
+    if input:isUsingGamepad() then
+        controls = input:getControlPrompt("up/down", "dpup", "navigate") .. "/" ..
+                   input:getPrompt("menu_down") .. "  |  " ..
+                   input:getControlPrompt("enter", "a", "select") .. "  |  " ..
+                   input:getControlPrompt("esc", "b", "quit")
+    else
+        controls = "UP/DOWN: navigate  |  ENTER: select  |  ESC: quit"
+    end
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    love.graphics.print(controls, 10, love.graphics.getHeight() - 50)
+
     -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -93,6 +107,27 @@ function MenuState:keypressed(key, scancode, isrepeat)
     elseif key == "return" or key == "space" then
         self:selectOption()
     elseif key == "escape" then
+        love.event.quit()
+    end
+end
+
+function MenuState:gamepadPressed(joystick, button)
+    print("MenuState: gamepad button pressed: " .. button)  -- Debug output
+
+    if button == "dpup" then
+        self.selectedOption = self.selectedOption - 1
+        if self.selectedOption < 1 then
+            self.selectedOption = #self.options
+        end
+    elseif button == "dpdown" then
+        self.selectedOption = self.selectedOption + 1
+        if self.selectedOption > #self.options then
+            self.selectedOption = 1
+        end
+    elseif button == "a" then  -- X button on DualSense (Cross)
+        print("Selecting option: " .. self.selectedOption)
+        self:selectOption()
+    elseif button == "b" then  -- Circle button on DualSense
         love.event.quit()
     end
 end

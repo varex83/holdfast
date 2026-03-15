@@ -50,7 +50,13 @@ function GameOverState:draw()
     love.graphics.print(statsText, (love.graphics.getWidth() - statsWidth) / 2, 300)
 
     -- Instructions
-    local instText = "Press ENTER to return to menu"
+    local input = self.game.input
+    local instText
+    if input:isUsingGamepad() then
+        instText = input:getControlPrompt("enter", "a", "return to menu")
+    else
+        instText = "Press ENTER to return to menu"
+    end
     local instWidth = self.smallFont:getWidth(instText)
     love.graphics.setColor(0.7, 0.7, 0.7, 1)
     love.graphics.print(instText, (love.graphics.getWidth() - instWidth) / 2, 400)
@@ -61,6 +67,14 @@ end
 
 function GameOverState:keypressed(key, scancode, isrepeat)
     if key == "return" or key == "escape" then
+        -- Reset game and return to menu
+        self.game.dayCounter = 0
+        self.game.stateMachine:setState("menu")
+    end
+end
+
+function GameOverState:gamepadPressed(joystick, button)
+    if button == "a" or button == "b" then
         -- Reset game and return to menu
         self.game.dayCounter = 0
         self.game.stateMachine:setState("menu")

@@ -68,3 +68,27 @@ function love.quit()
         game:quit()
     end
 end
+
+function love.joystickadded(joystick)
+    if game then
+        game:joystickAdded(joystick)
+    end
+end
+
+function love.joystickremoved(joystick)
+    if game then
+        game:joystickRemoved(joystick)
+    end
+end
+
+function love.gamepadpressed(joystick, button)
+    if game then
+        game:gamepadPressed(joystick, button)
+    end
+end
+
+function love.gamepadreleased(joystick, button)
+    if game then
+        game:gamepadReleased(joystick, button)
+    end
+end

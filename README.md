@@ -1,5 +1,7 @@
 # Holdfast
 
+![CI](https://github.com/bogdanogorodniy/holdfast/workflows/CI/badge.svg)
+
 A 2D cooperative survival game built with Love2D. Gather resources by day, defend your base by night.
 
 ## Quick Start

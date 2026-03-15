@@ -178,6 +178,50 @@ check-love:
 		exit 1; \
 	fi
 
+## find-lib: Search for libraries by feature (usage: make find-lib FEATURE="collision")
+find-lib:
+	@if [ -z "$(FEATURE)" ]; then \
+		echo "$(RED)Usage: make find-lib FEATURE=\"your-feature\"$(NC)"; \
+		echo "$(YELLOW)Examples:$(NC)"; \
+		echo "  make find-lib FEATURE=\"collision\""; \
+		echo "  make find-lib FEATURE=\"pathfinding\""; \
+		echo "  make find-lib FEATURE=\"camera\""; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Searching for libraries related to: $(FEATURE)$(NC)"
+	@echo "-------------------"
+	@if grep -i "$(FEATURE)" LIBRARIES.md > /dev/null 2>&1; then \
+		grep -i -A 2 -B 1 "$(FEATURE)" LIBRARIES.md | head -20; \
+		echo ""; \
+		echo "$(YELLOW)See LIBRARIES.md for full details$(NC)"; \
+	else \
+		echo "$(YELLOW)No libraries found for '$(FEATURE)'$(NC)"; \
+		echo "Try searching LIBRARIES.md manually or check:"; \
+		echo "  - https://github.com/love2d-community/awesome-love2d"; \
+		echo "  - https://love2d.org/wiki/Category:Libraries"; \
+	fi
+
+## libs: Show quick library recommendations for common features
+libs:
+	@echo "$(GREEN)Quick Library Recommendations$(NC)"
+	@echo "-------------------"
+	@echo "$(YELLOW)Search for specific features:$(NC)"
+	@echo "  make find-lib FEATURE=\"collision\""
+	@echo "  make find-lib FEATURE=\"pathfinding\""
+	@echo "  make find-lib FEATURE=\"camera\""
+	@echo "  make find-lib FEATURE=\"animation\""
+	@echo ""
+	@echo "$(YELLOW)Recommended for Holdfast:$(NC)"
+	@echo "  • bump.lua      - AABB collision detection"
+	@echo "  • jumper        - A* pathfinding for enemies"
+	@echo "  • anim8         - Sprite animation"
+	@echo "  • flux          - Tweening for UI"
+	@echo "  • lume          - Utility functions"
+	@echo "  • dkjson        - Save/load JSON"
+	@echo "  • lurker        - Hot-reload code changes"
+	@echo ""
+	@echo "$(GREEN)Full library list: LIBRARIES.md$(NC)"
+
 ## stats: Show project statistics
 stats:
 	@echo "$(GREEN)Project Statistics$(NC)"
