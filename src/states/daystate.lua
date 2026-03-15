@@ -21,6 +21,8 @@ local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
 local Constants      = require("data.constants")
 
+local ARROW_CURSOR = { up={-1,-1}, down={1,1}, left={-1,1}, right={1,-1} }
+
 local DayState = Class:extend()
 
 local CLASS_WORLD_VISUALS = {
@@ -641,14 +643,11 @@ function DayState:keypressed(key, scancode, isrepeat)
         else
             self.ghost:activate(self.player.tx, self.player.ty)
         end
-    elseif key == "up" then
-        if self.ghost:isActive() then self.ghost:moveCursor(-1, -1) end
-    elseif key == "down" then
-        if self.ghost:isActive() then self.ghost:moveCursor( 1,  1) end
-    elseif key == "left" then
-        if self.ghost:isActive() then self.ghost:moveCursor(-1,  1) end
-    elseif key == "right" then
-        if self.ghost:isActive() then self.ghost:moveCursor( 1, -1) end
+    elseif ARROW_CURSOR[key] then
+        if self.ghost:isActive() then
+            local d = ARROW_CURSOR[key]
+            self.ghost:moveCursor(d[1], d[2])
+        end
     elseif key == "r" then
         if self.ghost:isActive() then
             local tx, ty = self.ghost:cursorTile()

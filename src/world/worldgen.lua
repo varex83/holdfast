@@ -92,12 +92,13 @@ end
 -- ─── Initialisation ──────────────────────────────────────────────────────────
 
 function WorldGen.init(seed)
-    -- Set seed offsets for deterministic world generation
-    -- Using large prime number multipliers to spread seed values
     seed = seed or 12345
-    math.randomseed(seed)
-    seedOffsetX = math.random() * 10000
-    seedOffsetY = math.random() * 10000
+    -- Portable deterministic hash – identical to the Go server's NewGenerator().
+    -- Avoids platform-dependent math.random behaviour (LuaJIT vs Lua 5.1 vs MSVC rand).
+    --   Go: s = abs(seed) % 1000000;  offsetX = (s*7919)%10000;  offsetY = (s*6271)%10000
+    local s = math.abs(seed) % 1000000
+    seedOffsetX = (s * 7919) % 10000
+    seedOffsetY = (s * 6271) % 10000
 end
 
 return WorldGen
