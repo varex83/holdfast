@@ -1,18 +1,17 @@
 -- Luacheck configuration for Holdfast Love2D project
 
--- Allow Love2D globals
+-- Love2D standard defines love.* fields; we assign to them (love.load etc.)
 std = "lua51+love"
 
--- Ignore warnings about line length
 ignore = {
     "211", -- unused local variable
     "212", -- unused argument
     "213", -- unused loop variable
     "631", -- line is too long
-    "142", -- setting read-only field (love.load, love.update, etc. is the Love2D pattern)
+    "141", -- setting read-only field (love.load, love.update etc. is normal Love2D)
+    "142", -- mutating read-only field
 }
 
--- Files and directories to exclude
 exclude_files = {
     "build/**",
     "dist/**",
@@ -21,13 +20,7 @@ exclude_files = {
     "lib/**",
 }
 
--- Global variables to allow
 globals = {
-    "love",
-}
-
--- Read-only globals
-read_globals = {
     "love",
 }
 
