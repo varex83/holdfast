@@ -23,7 +23,7 @@ function DayState:new(game)
     self.game          = game
     self.font          = love.graphics.newFont(24)
     self.smallFont     = love.graphics.newFont(14)
-    self.timeRemaining = 600
+    self.timeRemaining = 270
 
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()
@@ -234,8 +234,6 @@ end
 function DayState:keypressed(key, scancode, isrepeat)
     if key == "escape" then
         self.game.stateMachine:setState("menu")
-    elseif key == "space" then
-        self.game.stateMachine:setState("night")
     elseif key == "e" then
         self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
     elseif key == "f" then
@@ -248,8 +246,6 @@ end
 function DayState:gamepadPressed(joystick, button)
     if button == "b" then
         self.game.stateMachine:setState("menu")
-    elseif button == "y" then
-        self.game.stateMachine:setState("night")
     elseif button == "x" then
         self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
     elseif button == "square" or button == "leftshoulder" then
