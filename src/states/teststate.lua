@@ -98,66 +98,46 @@ function TestState:getClassLabel(classType)
     return classDef and classDef.label or "Warrior"
 end
 
+function TestState:_updateInput()
+    if love.keyboard.wasPressed("f3") then self.debugMode = not self.debugMode end
+    if love.keyboard.wasPressed("1") then self:switchClass(Constants.CLASS.WARRIOR)
+    elseif love.keyboard.wasPressed("2") then self:switchClass(Constants.CLASS.ARCHER)
+    elseif love.keyboard.wasPressed("3") then self:switchClass(Constants.CLASS.ENGINEER)
+    elseif love.keyboard.wasPressed("4") then self:switchClass(Constants.CLASS.SCOUT)
+    end
+    if love.keyboard.wasPressed("t")     then self:spawnTestEnemy() end
+    if love.keyboard.wasPressed("space") then self:playerAttack() end
+    if love.keyboard.wasPressed("q")     then self:playerAbility() end
+    if love.keyboard.wasPressed("lshift") or love.keyboard.wasPressed("rshift") then
+        self:playerDash()
+    end
+end
+
+function TestState:_updatePlayer(dt)
+    self.player:update(dt)
+    if self.player.classType == Constants.CLASS.SCOUT then
+        Cloak.update(self.player, dt)
+    end
+    if self.player.cooldowns then self.player.cooldowns:update(dt) end
+end
+
 function TestState:update(dt)
     if self.dash.cooldown > 0 then
         self.dash.cooldown = math.max(0, self.dash.cooldown - dt)
     end
-    if love.keyboard.wasPressed("f3") then
-        self.debugMode = not self.debugMode
-    end
-
     if love.keyboard.wasPressed("escape") then
         self.game.stateMachine:setState("menu")
         return
     end
 
-    if love.keyboard.wasPressed("1") then
-        self:switchClass(Constants.CLASS.WARRIOR)
-    elseif love.keyboard.wasPressed("2") then
-        self:switchClass(Constants.CLASS.ARCHER)
-    elseif love.keyboard.wasPressed("3") then
-        self:switchClass(Constants.CLASS.ENGINEER)
-    elseif love.keyboard.wasPressed("4") then
-        self:switchClass(Constants.CLASS.SCOUT)
-    end
-
-    if love.keyboard.wasPressed("t") then
-        self:spawnTestEnemy()
-    end
-
-    if love.keyboard.wasPressed("space") then
-        self:playerAttack()
-    end
-    if love.keyboard.wasPressed("q") then
-        self:playerAbility()
-    end
-
-    if love.keyboard.wasPressed("lshift") or love.keyboard.wasPressed("rshift") then
-        self:playerDash()
-    end
-
-    if self.abilityDash.active then
-        self:updateAbilityDash(dt)
-    end
-
-    if self.dash.active then
-        self:updateDash(dt)
-    end
-
-    self.player:update(dt)
-    if self.player.classType == Constants.CLASS.SCOUT then
-        Cloak.update(self.player, dt)
-    end
-    if self.player.cooldowns then
-        self.player.cooldowns:update(dt)
-    end
+    self:_updateInput()
+    if self.abilityDash.active then self:updateAbilityDash(dt) end
+    if self.dash.active         then self:updateDash(dt) end
+    self:_updatePlayer(dt)
 
     local neighbors = self:getEnemyCharacters()
     for _, enemy in ipairs(self.enemies) do
-        enemy:update(dt, {
-            neighbors = neighbors,
-            player = self.player,
-        })
+        enemy:update(dt, { neighbors = neighbors, player = self.player })
     end
 
     self.combatManager:update(dt)
