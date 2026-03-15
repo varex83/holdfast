@@ -6,7 +6,8 @@
       "Bash(make stats:*)",
       "Bash(lua:*)",
       "Bash(luac:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git add:*)"
     ]
   }
 }
