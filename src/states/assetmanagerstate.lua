@@ -370,8 +370,8 @@ function AssetManagerState:drawAnimationPreview(panel)
 
     local stateDef = setDef.states[self.previewAnimationState] or setDef.states.idle or setDef.states.walk or setDef.states.attack
     if not stateDef then
-        local _k
-        _k, stateDef = next(setDef.states or {})
+        local _
+        _, stateDef = next(setDef.states or {})
     end
     if not stateDef then
         return
