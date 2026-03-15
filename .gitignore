@@ -1,0 +1,51 @@
+# Love2D / Lua
+*.love
+
+# Compiled Lua
+luac.out
+
+# Save files
+saves/*.json
+saves/*.sav
+!saves/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Build artifacts
+build/
+dist/
+
+# Libraries (optional - uncomment if you want to exclude them)
+# lib/
+
+# Assets sources (keep compiled assets, ignore sources)
+assets/sources/
+*.psd
+*.ai
+*.xcf
+
+# Testing
+coverage/
+test_results/
+
+# Dependency managers
+luarocks/
