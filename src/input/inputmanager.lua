@@ -18,7 +18,8 @@ function InputManager.new()
         confirm = "return",
         cancel = "escape",
         interact = "e",
-        ability = "space",
+        ability = "q",
+        ability2 = "lshift",
         menu_up = "up",
         menu_down = "down",
     }

@@ -175,9 +175,9 @@ function HUD:_drawControls(input, sh, sw, ghost)
 
     local hints
     if input and input:isUsingGamepad() then
-        hints = "Left Stick: move  |  X: harvest  |  RB: build  |  B: menu  |  Square/LB: deposit"
+        hints = "Left Stick: move  |  A: attack  |  Y: ability  |  X: harvest  |  RB: build  |  B: menu  |  Square/LB: deposit"
     else
-        hints = "WASD: move  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
+        hints = "WASD: move  |  SPACE: attack  |  Q: ability  |  SHIFT: dash  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
     end
 
     local tw = self._fontSm:getWidth(hints)
@@ -185,5 +185,3 @@ function HUD:_drawControls(input, sh, sw, ghost)
 end
 
 return HUD
-
-

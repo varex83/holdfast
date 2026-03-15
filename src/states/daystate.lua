@@ -19,6 +19,7 @@ local BuildManager   = require("src.buildings.buildmanager")
 local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
 local Constants      = require("data.constants")
+local CombatManager  = require("src.combat.combatmanager")
 
 local DayState = Class:extend()
 
@@ -88,10 +89,12 @@ function DayState:new(game)
     self.ghost = BuildGhost()
     self.hud   = HUD()
 
-    self.debugMode      = false
+    self.debugMode = false
     self._stickCooldown = 0
-    self._prevMouse     = { x = -1, y = -1 }
-
+    self._prevMouse = { x = -1, y = -1 }
+    self.dash = { active = false, remaining = 0, speed = 10.0, dirX = 0, dirY = 0, cooldown = 0, cooldownTime = 0.7 }
+    self.abilityDash = { active = false, remaining = 0, speed = 6.0, dirX = 0, dirY = 0, duration = 0.5 }
+    self.combatManager = CombatManager.new(game.world, game.eventBus)
     self.player.speed = self.playerCharacter.stats:getSpeed()
 end
 
@@ -102,6 +105,9 @@ function DayState:enter(selectedClass)
 
     self:_setPlayerClass(selectedClass)
     self:_ensureValidSpawn()
+    self:_syncPlayerCharacterPosition()
+    self.game.world:clear()
+    self.game.world:addEntity(self.playerCharacter.entity)
 
     local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
     self.camera:moveTo(px, py)
@@ -133,9 +139,15 @@ function DayState:exit()
     print("Exited Day State")
     self.ghost:deactivate()
     self.harvest:cancel()
+    self.dash.active = false
+    self.abilityDash.active = false
 end
 
 function DayState:_updateMovement(dt)
+    if self.dash.active then
+        self:_updateDash(dt)
+        return
+    end
     local sdx, sdy = self.game.input:getMoveVector()
     if sdx ~= 0 or sdy ~= 0 then
         local spd    = self.player.speed * dt
@@ -218,7 +230,16 @@ function DayState:_updateWorld()
 end
 
 function DayState:update(dt)
-    self.timeRemaining  = self.timeRemaining - dt
+    if self.dash.cooldown > 0 then
+        self.dash.cooldown = math.max(0, self.dash.cooldown - dt)
+    end
+    if self.playerCharacter and self.playerCharacter.attackTimer and self.playerCharacter.attackTimer > 0 then
+        self.playerCharacter.attackTimer = math.max(0, self.playerCharacter.attackTimer - dt)
+        if self.playerCharacter.attackTimer == 0 and self.playerCharacter.state == self.playerCharacter.STATE.ATTACKING then
+            self.playerCharacter.state = self.playerCharacter.isMoving and self.playerCharacter.STATE.WALKING or self.playerCharacter.STATE.IDLE
+        end
+    end
+    self.timeRemaining = self.timeRemaining - dt
     self.game.timeOfDay = self.timeRemaining
 
     if self.timeRemaining <= 0 then
@@ -226,7 +247,11 @@ function DayState:update(dt)
         return
     end
 
-    self:_updateMovement(dt)
+    if self.abilityDash.active then
+        self:_updateAbilityDash(dt)
+    else
+        self:_updateMovement(dt)
+    end
     self:_updateCamera(dt)
     self:_updateBuildCursor()
     self:_updateWorld()
@@ -234,6 +259,8 @@ function DayState:update(dt)
     self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
     self.respawn:update(dt)
     self.playerCharacter:updateVisuals(dt)
+    self:_syncPlayerCharacterPosition()
+    self.combatManager:update(dt)
 
     if self.game.world then self.game.world:update(dt) end
 end
@@ -347,7 +374,147 @@ function DayState:_getPropOpacity(image, tx, ty, quad)
     return 1
 end
 
--- Returns tile bounds covering the visible screen.
+function DayState:_ghostTile()
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    return ptx + self.player.ftx, pty + self.player.fty
+end
+
+function DayState:_syncPlayerCharacterPosition()
+    local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
+    self.playerCharacter.position.x = psx
+    self.playerCharacter.position.y = psy + 2
+end
+
+function DayState:_startDash()
+    if self.dash.active then return end
+    if self.abilityDash.active then return end
+    if self.dash.cooldown > 0 then return end
+    local dx = self.player.ftx
+    local dy = self.player.fty
+    if dx == 0 and dy == 0 then return end
+    self.dash.active = true
+    self.dash.remaining = 1.0  -- tiles
+    self.dash.dirX = dx
+    self.dash.dirY = dy
+    self.dash.cooldown = self.dash.cooldownTime
+end
+
+function DayState:_updateDash(dt)
+    local step = math.min(self.dash.remaining, self.dash.speed * dt)
+    if step <= 0 then
+        self.dash.active = false
+        return
+    end
+
+    local movedX = self.dash.dirX * step
+    local movedY = self.dash.dirY * step
+    local beforeTx = self.player.tx
+    local beforeTy = self.player.ty
+    self:_movePlayer(movedX, movedY)
+
+    if self.player.tx == beforeTx and self.player.ty == beforeTy then
+        self.dash.active = false
+        return
+    end
+
+    self.dash.remaining = self.dash.remaining - step
+    if self.dash.remaining <= 0 then
+        self.dash.active = false
+    end
+end
+
+function DayState:_startAbilityDash()
+    if self.abilityDash.active then return end
+    if self.dash.active then return end
+    local dx = self.player.ftx
+    local dy = self.player.fty
+    if dx == 0 and dy == 0 then return end
+    self.abilityDash.active = true
+    self.abilityDash.remaining = self.abilityDash.duration
+    self.abilityDash.dirX = dx
+    self.abilityDash.dirY = dy
+end
+
+function DayState:_updateAbilityDash(dt)
+    local stepTime = math.min(self.abilityDash.remaining, dt)
+    if stepTime <= 0 then
+        self.abilityDash.active = false
+        return
+    end
+
+    local step = self.abilityDash.speed * stepTime
+    local dtx = self.abilityDash.dirX * step
+    local dty = self.abilityDash.dirY * step
+    local beforeTx = self.player.tx
+    local beforeTy = self.player.ty
+    self:_movePlayer(dtx, dty)
+
+    if self.player.tx == beforeTx and self.player.ty == beforeTy then
+        self.abilityDash.active = false
+        return
+    end
+
+    self.abilityDash.remaining = self.abilityDash.remaining - stepTime
+    if self.abilityDash.remaining <= 0 then
+        self.abilityDash.active = false
+    end
+end
+
+function DayState:_attackPlayer(damageMultiplier, rangeMultiplier, cooldown)
+    if not self.combatManager:canAttack(self.playerCharacter.entity) then
+        return false
+    end
+
+    local stats = self.playerCharacter.stats
+    if not stats:canAttack() then
+        return false
+    end
+
+    local facingDir = self.playerCharacter.facingDirection
+    local range = stats:getAttackRange() * (rangeMultiplier or 1.0)
+    local offsetX = math.cos(facingDir) * range / 2
+    local offsetY = math.sin(facingDir) * range / 2
+
+    local attackId = self.combatManager:registerAttack(self.playerCharacter.entity, {
+        range = range,
+        damage = stats:getAttack() * (damageMultiplier or 1.0),
+        cooldown = cooldown or (1.0 / stats:getAttackSpeed()),
+        hitboxOffset = {x = offsetX, y = offsetY},
+        hitboxSize = {width = range, height = range / 2},
+        duration = 0.3,
+        knockback = 50,
+        hitLimit = 10
+    })
+
+    if attackId then
+        self.playerCharacter:triggerAttackAnimation()
+    end
+    return attackId ~= nil
+end
+
+function DayState:_useAbility()
+    local classType = self.playerCharacter.classType
+
+    if classType == Constants.CLASS.WARRIOR then
+        local ok = self:_attackPlayer(1.6, 1.8, 2.0)
+        if ok then
+            self:_startAbilityDash()
+        end
+    elseif classType == Constants.CLASS.ARCHER then
+        self:_attackPlayer(1.3, 1.4, 2.0)
+    elseif classType == Constants.CLASS.SCOUT then
+        if self.playerCharacter.health then
+            self.playerCharacter.health:setInvulnerable(1.5)
+        end
+    elseif classType == Constants.CLASS.ENGINEER then
+        self.playerCharacter:heal(20)
+    else
+        self.playerCharacter:useAbility()
+    end
+end
+
+-- Returns tile rect {x1,y1,x2,y2} covering the visible screen area.
 function DayState:_visibleTileRect()
     local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
     local corners = {
@@ -548,7 +715,7 @@ function DayState:draw()
 
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
     self.harvest:draw()
-    self.ghost:draw(self.buildings, self.depot)
+    self.ghost:draw(self.buildings, self.depot, self.inventory)
 
     if self.debugMode then self:drawDebugWorld(drawList) end
 
@@ -675,31 +842,26 @@ function DayState:_countLoadedChunks()
     return count
 end
 
-function DayState:keypressed(key, scancode, isrepeat)
-    if key == "escape" then
-        if self.ghost:isActive() then
-            self.ghost:deactivate()
-        else
-            self.game.stateMachine:setState("menu")
-        end
-    elseif key == "f3" then
-        self.debugMode = not self.debugMode
-    elseif key == "b" then
-        if self.ghost:isActive() then
-            self.ghost:cycleType()
-        else
-            self.ghost:activate(self.player.tx, self.player.ty)
-        end
-    elseif ARROW_CURSOR[key] then
-        if self.ghost:isActive() then
-            local d = ARROW_CURSOR[key]
-            self.ghost:moveCursor(d[1], d[2])
-        end
-    elseif key == "r" then
-        if self.ghost:isActive() then
-            local tx, ty = self.ghost:cursorTile()
-            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
-        end
+function DayState:_keypressedBuild(key)
+    if key == "b" then
+        if self.ghost:isActive() then self.ghost:cycleType()
+        else self.ghost:activate(self.player.tx, self.player.ty) end
+    elseif key == "r" and self.ghost:isActive() then
+        local tx, ty = self.ghost:cursorTile()
+        self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
+    elseif ARROW_CURSOR[key] and self.ghost:isActive() then
+        local d = ARROW_CURSOR[key]
+        self.ghost:moveCursor(d[1], d[2])
+    end
+end
+
+function DayState:_keypressedAction(key)
+    if key == "space" then
+        if not self.ghost:isActive() then self:_attackPlayer(1.0, 1.0) end
+    elseif key == "q" then
+        if not self.ghost:isActive() then self:_useAbility() end
+    elseif key == "lshift" or key == "rshift" then
+        self:_startDash()
     elseif key == "e" then
         if not self.ghost:isActive() then
             self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
@@ -708,6 +870,19 @@ function DayState:keypressed(key, scancode, isrepeat)
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
         end
+    end
+end
+
+function DayState:keypressed(key, scancode, isrepeat)
+    if isrepeat then return end
+    if key == "escape" then
+        if self.ghost:isActive() then self.ghost:deactivate()
+        else self.game.stateMachine:setState("menu") end
+    elseif key == "f3" then
+        self.debugMode = not self.debugMode
+    else
+        self:_keypressedBuild(key)
+        self:_keypressedAction(key)
     end
 end
 
@@ -727,7 +902,13 @@ function DayState:gamepadPressed(joystick, button)
     elseif button == "a" then
         if self.ghost:isActive() then
             local tx, ty = self.ghost:cursorTile()
-            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
+        else
+            self:_attackPlayer(1.0, 1.0)
+        end
+    elseif button == "y" then
+        if not self.ghost:isActive() then
+            self:_useAbility()
         end
     elseif button == "x" then
         if not self.ghost:isActive() then
