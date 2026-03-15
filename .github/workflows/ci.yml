@@ -46,7 +46,14 @@ jobs:
 
       - name: Check Lua syntax
         run: |
-          find . -name "*.lua" -not -path "./build/*" -not -path "./dist/*" -not -path "./.git/*" -not -path "./lib/*" | while read -r file; do
+          find . -type f -name "*.lua" \
+            -not -path "./build/*" \
+            -not -path "./dist/*" \
+            -not -path "./.git/*" \
+            -not -path "./lib/*" \
+            -not -path "./.luarocks/*" \
+            -not -path "./.lua/*" \
+          | while read -r file; do
             echo "Checking $file"
             luac -p "$file" || exit 1
           done
