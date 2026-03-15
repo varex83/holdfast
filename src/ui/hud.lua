@@ -24,7 +24,7 @@ end
 
 -- ─── Public draw entry point ─────────────────────────────────────────────────
 
-function HUD:draw(game, inventory, depot, player)
+function HUD:draw(game, inventory, depot, player, ghost)
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()
 
@@ -33,7 +33,10 @@ function HUD:draw(game, inventory, depot, player)
     if depot and depot:isNearby(player.tx, player.ty) then
         self:_drawDepotStock(depot, sw)
     end
-    self:_drawControls(game.input, sh, sw)
+    if ghost and ghost:isActive() then
+        self:_drawBuildMode(ghost, sw, sh)
+    end
+    self:_drawControls(game.input, sh, sw, ghost)
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -139,17 +142,42 @@ function HUD:_drawDepotStock(depot, sw)
     end
 end
 
+-- ─── Build mode banner ───────────────────────────────────────────────────────
+
+function HUD:_drawBuildMode(ghost, sw, sh)
+    local Buildings = require("data.buildings")
+    local btype = ghost:currentType()
+    local def   = Buildings[btype]
+
+    local costParts = {}
+    for rtype, amt in pairs(def.cost) do
+        costParts[#costParts + 1] = amt .. " " .. rtype
+    end
+    local costStr = #costParts > 0 and table.concat(costParts, ", ") or "free"
+
+    love.graphics.setFont(self._fontMd)
+    local text = "BUILD: " .. def.name .. "  (" .. costStr .. ")  |  Move: aim  |  B: cycle type  |  R: place  |  ESC: cancel"
+    local tw   = self._fontMd:getWidth(text)
+
+    love.graphics.setColor(0, 0, 0, 0.60)
+    love.graphics.rectangle("fill", (sw - tw) * 0.5 - 8, sh - 52, tw + 16, 22, 4, 4)
+    love.graphics.setColor(0.3, 1.0, 0.4, 1)
+    love.graphics.print(text, (sw - tw) * 0.5, sh - 50)
+end
+
 -- ─── Control hints (bottom) ──────────────────────────────────────────────────
 
-function HUD:_drawControls(input, sh, sw)
+function HUD:_drawControls(input, sh, sw, ghost)
+    if ghost and ghost:isActive() then return end  -- banner replaces hints in build mode
+
     love.graphics.setFont(self._fontSm)
     love.graphics.setColor(1, 1, 1, 0.75)
 
     local hints
     if input and input:isUsingGamepad() then
-        hints = "Left Stick: move  |  X: harvest  |  △: skip night  |  ○: menu  |  F/□: deposit"
+        hints = "Left Stick: move  |  X: harvest  |  RB: build  |  △: skip night  |  ○: menu  |  □: deposit"
     else
-        hints = "WASD: move  |  E: harvest  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
+        hints = "WASD: move  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
     end
 
     local tw = self._fontSm:getWidth(hints)
