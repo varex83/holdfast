@@ -93,9 +93,20 @@ EventBus:on("enemyKilled", function(data) ... end)
 
 ## Current Status
 
-**Phase**: Foundation Setup
+**Phase**: Phase 0 - Foundation ✅ COMPLETE
 **Version**: 0.1.0-alpha
-**Playable**: Not yet
+**Playable**: Menu and state transitions working
+
+### Phase 0 Complete
+- ✅ Project directory structure
+- ✅ Love2D configuration (main.lua, conf.lua)
+- ✅ State machine (menu, day, night, gameover)
+- ✅ ECS foundation (Entity, Component, System, World)
+- ✅ Event bus for cross-system communication
+- ✅ Game configuration files
+- ✅ Debug overlay (F1 to toggle)
+
+The game now launches with a basic menu and can transition between states!
 
 See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed progress tracking.
 
