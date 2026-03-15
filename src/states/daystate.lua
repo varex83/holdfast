@@ -76,6 +76,56 @@ function DayState:exit()
     self.ghost:deactivate()
 end
 
+function DayState:_updateMovement(dt)
+    local sdx, sdy = self.game.input:getMoveVector()
+    if sdx == 0 and sdy == 0 then return end
+    local spd    = self.player.speed * dt
+    local hw, hh = 32, 16
+    local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
+    local dty = (sdy * spd / hh - sdx * spd / hw) / 2
+    self.player.tx = self.player.tx + dtx
+    self.player.ty = self.player.ty + dty
+    local fx = dtx > 0 and 1 or (dtx < 0 and -1 or 0)
+    local fy = dty > 0 and 1 or (dty < 0 and -1 or 0)
+    if fx ~= 0 or fy ~= 0 then
+        self.player.ftx = fx
+        self.player.fty = fy
+    end
+end
+
+function DayState:_updateCamera(dt)
+    local rx, ry = self.game.input:getRightStick()
+    if math.abs(rx) > 0 or math.abs(ry) > 0 then
+        self.camera.x = self.camera.x + rx * 300 * dt
+        self.camera.y = self.camera.y + ry * 300 * dt
+    else
+        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+        self.camera:follow(px, py)
+    end
+    self.camera:update(dt)
+end
+
+function DayState:_updateWorld()
+    self.chunks:update(self.player.tx, self.player.ty)
+    self.fog:update(self.player.tx, self.player.ty)
+
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    local r   = FogOfWar.VISION_RADIUS
+    for ddx = -r, r do
+        for ddy = -r, r do
+            if ddx * ddx + ddy * ddy <= r * r then
+                self.fog:cacheType(ptx + ddx, pty + ddy,
+                    self.chunks:getTile(ptx + ddx, pty + ddy))
+            end
+        end
+    end
+
+    for _, chunk in pairs(self.chunks._chunks) do
+        self.nodes:syncChunk(chunk)
+    end
+end
+
 function DayState:update(dt)
     self.timeRemaining  = self.timeRemaining - dt
     self.game.timeOfDay = self.timeRemaining
@@ -85,61 +135,12 @@ function DayState:update(dt)
         return
     end
 
-    -- Movement
-    local sdx, sdy = self.game.input:getMoveVector()
-    if sdx ~= 0 or sdy ~= 0 then
-        local spd    = self.player.speed * dt
-        local hw, hh = 32, 16
-        local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
-        local dty = (sdy * spd / hh - sdx * spd / hw) / 2
-        self.player.tx = self.player.tx + dtx
-        self.player.ty = self.player.ty + dty
-        -- Update facing to the direction of tile-space movement
-        local fx = dtx > 0 and 1 or (dtx < 0 and -1 or 0)
-        local fy = dty > 0 and 1 or (dty < 0 and -1 or 0)
-        if fx ~= 0 or fy ~= 0 then
-            self.player.ftx = fx
-            self.player.fty = fy
-        end
-    end
+    self:_updateMovement(dt)
+    self:_updateCamera(dt)
+    self:_updateWorld()
 
-    -- Camera
-    local rx, ry = self.game.input:getRightStick()
-    if math.abs(rx) > 0 or math.abs(ry) > 0 then
-        self.camera.x = self.camera.x + rx * 300 * dt
-        self.camera.y = self.camera.y + ry * 300 * dt
-    else
-        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
-        self.camera:follow(px, py)
-    end
-
-    -- World systems
-    self.chunks:update(self.player.tx, self.player.ty)
-    self.fog:update(self.player.tx, self.player.ty)
-
-    -- Sync resource nodes from loaded chunks and cache tile types
-    local ptx = math.floor(self.player.tx + 0.5)
-    local pty = math.floor(self.player.ty + 0.5)
-    local r   = FogOfWar.VISION_RADIUS
-    for ddx = -r, r do
-        for ddy = -r, r do
-            if ddx * ddx + ddy * ddy <= r * r then
-                local tx, ty = ptx + ddx, pty + ddy
-                self.fog:cacheType(tx, ty, self.chunks:getTile(tx, ty))
-            end
-        end
-    end
-
-    -- Sync nodes from all loaded chunks
-    for _, chunk in pairs(self.chunks._chunks) do
-        self.nodes:syncChunk(chunk)
-    end
-
-    -- Resource systems
     self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
     self.respawn:update(dt)
-
-    self.camera:update(dt)
 
     if self.game.world then self.game.world:update(dt) end
 end
