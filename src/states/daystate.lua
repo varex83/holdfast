@@ -15,6 +15,8 @@ local HarvestManager = require("src.resources.harvesting")
 local RespawnManager = require("src.resources.respawn")
 local Inventory      = require("src.inventory.inventory")
 local SupplyDepot    = require("src.inventory.supplydepot")
+local BuildManager   = require("src.buildings.buildmanager")
+local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
 
 local DayState = Class:extend()
@@ -43,9 +45,19 @@ function DayState:new(game)
 
     self.inventory = Inventory("scout")   -- placeholder class; set by class select later
     self.depot     = SupplyDepot(2, 2, game.eventBus)  -- base depot at tile (2,2)
+
+    self.buildings = BuildManager(game.eventBus)
+    self.ghost     = BuildGhost()
+    -- Place the base core for free at the origin
+    self.buildings:placeFree("basecore", 0, 0)
+    -- Seed depot with starting materials so building is testable from day 1
+    self.depot:add("wood",  20)
+    self.depot:add("stone", 10)
+
     self.hud       = HUD()
 
-    self.player = { tx = 0.0, ty = 0.0, speed = 200 }
+    -- facing: tile offset in front of player (tile space), default south
+    self.player = { tx = 0.0, ty = 0.0, speed = 200, ftx = 0, fty = 1 }
 end
 
 function DayState:enter()
@@ -61,6 +73,57 @@ end
 
 function DayState:exit()
     print("Exited Day State")
+    self.ghost:deactivate()
+end
+
+function DayState:_updateMovement(dt)
+    local sdx, sdy = self.game.input:getMoveVector()
+    if sdx == 0 and sdy == 0 then return end
+    local spd    = self.player.speed * dt
+    local hw, hh = 32, 16
+    local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
+    local dty = (sdy * spd / hh - sdx * spd / hw) / 2
+    self.player.tx = self.player.tx + dtx
+    self.player.ty = self.player.ty + dty
+    local fx = dtx > 0 and 1 or (dtx < 0 and -1 or 0)
+    local fy = dty > 0 and 1 or (dty < 0 and -1 or 0)
+    if fx ~= 0 or fy ~= 0 then
+        self.player.ftx = fx
+        self.player.fty = fy
+    end
+end
+
+function DayState:_updateCamera(dt)
+    local rx, ry = self.game.input:getRightStick()
+    if math.abs(rx) > 0 or math.abs(ry) > 0 then
+        self.camera.x = self.camera.x + rx * 300 * dt
+        self.camera.y = self.camera.y + ry * 300 * dt
+    else
+        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+        self.camera:follow(px, py)
+    end
+    self.camera:update(dt)
+end
+
+function DayState:_updateWorld()
+    self.chunks:update(self.player.tx, self.player.ty)
+    self.fog:update(self.player.tx, self.player.ty)
+
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    local r   = FogOfWar.VISION_RADIUS
+    for ddx = -r, r do
+        for ddy = -r, r do
+            if ddx * ddx + ddy * ddy <= r * r then
+                self.fog:cacheType(ptx + ddx, pty + ddy,
+                    self.chunks:getTile(ptx + ddx, pty + ddy))
+            end
+        end
+    end
+
+    for _, chunk in pairs(self.chunks._chunks) do
+        self.nodes:syncChunk(chunk)
+    end
 end
 
 function DayState:update(dt)
@@ -72,56 +135,21 @@ function DayState:update(dt)
         return
     end
 
-    -- Movement
-    local sdx, sdy = self.game.input:getMoveVector()
-    if sdx ~= 0 or sdy ~= 0 then
-        local spd    = self.player.speed * dt
-        local hw, hh = 32, 16
-        local dtx = (sdx * spd / hw + sdy * spd / hh) / 2
-        local dty = (sdy * spd / hh - sdx * spd / hw) / 2
-        self.player.tx = self.player.tx + dtx
-        self.player.ty = self.player.ty + dty
-    end
+    self:_updateMovement(dt)
+    self:_updateCamera(dt)
+    self:_updateWorld()
 
-    -- Camera
-    local rx, ry = self.game.input:getRightStick()
-    if math.abs(rx) > 0 or math.abs(ry) > 0 then
-        self.camera.x = self.camera.x + rx * 300 * dt
-        self.camera.y = self.camera.y + ry * 300 * dt
-    else
-        local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
-        self.camera:follow(px, py)
-    end
-
-    -- World systems
-    self.chunks:update(self.player.tx, self.player.ty)
-    self.fog:update(self.player.tx, self.player.ty)
-
-    -- Sync resource nodes from loaded chunks and cache tile types
-    local ptx = math.floor(self.player.tx + 0.5)
-    local pty = math.floor(self.player.ty + 0.5)
-    local r   = FogOfWar.VISION_RADIUS
-    for ddx = -r, r do
-        for ddy = -r, r do
-            if ddx * ddx + ddy * ddy <= r * r then
-                local tx, ty = ptx + ddx, pty + ddy
-                self.fog:cacheType(tx, ty, self.chunks:getTile(tx, ty))
-            end
-        end
-    end
-
-    -- Sync nodes from all loaded chunks
-    for _, chunk in pairs(self.chunks._chunks) do
-        self.nodes:syncChunk(chunk)
-    end
-
-    -- Resource systems
     self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
     self.respawn:update(dt)
 
-    self.camera:update(dt)
-
     if self.game.world then self.game.world:update(dt) end
+end
+
+-- Returns the tile where the build ghost should appear (one step ahead of player).
+function DayState:_ghostTile()
+    local ptx = math.floor(self.player.tx + 0.5)
+    local pty = math.floor(self.player.ty + 0.5)
+    return ptx + self.player.ftx, pty + self.player.fty
 end
 
 -- Returns tile bounds covering the visible screen.
@@ -193,6 +221,13 @@ function DayState:draw()
     self.tileBatch:flushOutlines(0, 0, 0, 0.20)
     self.tileBatch:clear()
 
+    -- Buildings (depth-sorted internally)
+    self.buildings:draw(self.fog)
+
+    -- Build ghost (shown on top of buildings)
+    local gtx, gty = self:_ghostTile()
+    self.ghost:draw(gtx, gty, self.buildings, self.depot)
+
     -- Resource nodes
     self.nodes:draw({ x1=x1, y1=y1, x2=x2, y2=y2 }, self.fog)
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
@@ -228,16 +263,33 @@ function DayState:draw()
 
     self.camera:clear()
 
-    self.hud:draw(self.game, self.inventory, self.depot, self.player)
+    self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost)
 end
 
 function DayState:keypressed(key, scancode, isrepeat)
     if key == "escape" then
-        self.game.stateMachine:setState("menu")
+        if self.ghost:isActive() then
+            self.ghost:deactivate()
+        else
+            self.game.stateMachine:setState("menu")
+        end
     elseif key == "space" then
         self.game.stateMachine:setState("night")
+    elseif key == "b" then
+        if self.ghost:isActive() then
+            self.ghost:cycleType()
+        else
+            self.ghost:activate()
+        end
+    elseif key == "r" then
+        if self.ghost:isActive() then
+            local tx, ty = self:_ghostTile()
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+        end
     elseif key == "e" then
-        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        if not self.ghost:isActive() then
+            self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        end
     elseif key == "f" then
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
@@ -247,11 +299,28 @@ end
 
 function DayState:gamepadPressed(joystick, button)
     if button == "b" then
-        self.game.stateMachine:setState("menu")
+        if self.ghost:isActive() then
+            self.ghost:deactivate()
+        else
+            self.game.stateMachine:setState("menu")
+        end
     elseif button == "y" then
         self.game.stateMachine:setState("night")
+    elseif button == "rightshoulder" then
+        if self.ghost:isActive() then
+            self.ghost:cycleType()
+        else
+            self.ghost:activate()
+        end
+    elseif button == "a" then
+        if self.ghost:isActive() then
+            local tx, ty = self:_ghostTile()
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+        end
     elseif button == "x" then
-        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        if not self.ghost:isActive() then
+            self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+        end
     elseif button == "square" or button == "leftshoulder" then
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
