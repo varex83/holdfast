@@ -25,44 +25,66 @@ end
 
 -- Register an attack from an attacker entity
 function CombatManager:registerAttack(attacker, attackData)
-    if not attacker or not attacker:isAlive() then
+    if not self:validateAttacker(attacker) then
         return nil
     end
 
-    -- Check if attacker is on cooldown
-    local attackerId = attacker.id
-    if self.activeAttacks[attackerId] then
-        local cooldownRemaining = self.activeAttacks[attackerId].cooldownEnd - love.timer.getTime()
-        if cooldownRemaining > 0 then
-            return nil
-        end
-    end
-
-    -- Get attacker position
     local position = attacker:getComponent("position")
     if not position then
         return nil
     end
 
-    -- Calculate damage based on attacker stats
-    local damage = attackData.damage
-    if not damage then
-        local stats = attacker:getComponent("stats")
-        if stats then
-            damage = stats:getAttack() or 10
-        else
-            damage = 10 -- Default damage
+    local damage = self:getAttackDamage(attacker, attackData)
+    local attack = self:createAttackRecord(attacker, attackData, damage)
+
+    self:setCooldown(attacker.id, attackData.cooldown or 1.0)
+    self.attackHits[attack.id] = attack
+
+    self:broadcastAttackStarted(attacker.id, attack.id, position)
+
+    return attack.id
+end
+
+-- Validate if attacker can perform an attack
+function CombatManager:validateAttacker(attacker)
+    if not attacker or not attacker:isAlive() then
+        return false
+    end
+
+    local attackerId = attacker.id
+    if self.activeAttacks[attackerId] then
+        local cooldownRemaining = self.activeAttacks[attackerId].cooldownEnd - love.timer.getTime()
+        if cooldownRemaining > 0 then
+            return false
         end
     end
 
-    -- Create attack record
+    return true
+end
+
+-- Get attack damage from attacker stats or attackData
+function CombatManager:getAttackDamage(attacker, attackData)
+    if attackData.damage then
+        return attackData.damage
+    end
+
+    local stats = attacker:getComponent("stats")
+    if stats then
+        return stats:getAttack() or 10
+    end
+
+    return 10
+end
+
+-- Create an attack record
+function CombatManager:createAttackRecord(attacker, attackData, damage)
     local attackId = self.nextAttackId
     self.nextAttackId = self.nextAttackId + 1
 
-    local attack = {
+    return {
         id = attackId,
         attacker = attacker,
-        attackerId = attackerId,
+        attackerId = attacker.id,
         damage = damage,
         range = attackData.range or 50,
         hitboxOffset = attackData.hitboxOffset or {x = 0, y = 0},
@@ -74,16 +96,17 @@ function CombatManager:registerAttack(attacker, attackData)
         hitCount = 0,
         hitEntities = {}
     }
+end
 
-    -- Set cooldown
+-- Set attack cooldown for an entity
+function CombatManager:setCooldown(attackerId, cooldownDuration)
     self.activeAttacks[attackerId] = {
-        cooldownEnd = love.timer.getTime() + (attackData.cooldown or 1.0)
+        cooldownEnd = love.timer.getTime() + cooldownDuration
     }
+end
 
-    -- Track this attack's hits
-    self.attackHits[attackId] = attack
-
-    -- Broadcast attack started event
+-- Broadcast attack started event
+function CombatManager:broadcastAttackStarted(attackerId, attackId, position)
     if self.eventBus then
         self.eventBus.emit("combat:attack_started", {
             attackerId = attackerId,
@@ -91,8 +114,6 @@ function CombatManager:registerAttack(attacker, attackData)
             position = {x = position.x, y = position.y}
         })
     end
-
-    return attackId
 end
 
 -- Update combat system

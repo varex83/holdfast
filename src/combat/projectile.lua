@@ -10,68 +10,120 @@ local Sprite = require('src.ecs.components.sprite')
 
 local Projectile = {}
 
--- Create a generic projectile
-function Projectile.create(world, config)
+-- Get default projectile configuration
+local function getDefaultConfig()
+    return {
+        x = 0,
+        y = 0,
+        speed = 300,
+        direction = 0,
+        hitboxWidth = 8,
+        hitboxHeight = 8,
+        team = 'neutral',
+        damage = 10,
+        lifetime = 5.0,
+        piercing = false,
+        maxPierceCount = 1,
+        gravity = 0,
+        projectileType = 'generic',
+        r = 1,
+        g = 1,
+        b = 1,
+        a = 1,
+        width = 8,
+        height = 8,
+        shape = 'rectangle',
+        layer = 5
+    }
+end
+
+-- Merge user config with defaults
+local function mergeConfig(config)
+    local defaults = getDefaultConfig()
     config = config or {}
 
-    -- Create entity
+    for key, value in pairs(defaults) do
+        if config[key] == nil then
+            config[key] = value
+        end
+    end
+
+    return config
+end
+
+-- Create a generic projectile
+function Projectile.create(world, userConfig)
+    local config = mergeConfig(userConfig)
     local entity = Entity()
 
-    -- Add Position component
-    local position = Position.create(config.x or 0, config.y or 0, entity)
-    entity:addComponent('position', position)
+    Projectile.addPositionComponent(entity, config)
+    Projectile.addVelocityComponent(entity, config)
+    Projectile.addHitboxComponent(entity, config)
+    Projectile.addProjectileDataComponent(entity, config)
+    Projectile.addSpriteComponent(entity, config)
 
-    -- Add Velocity component
-    local speed = config.speed or 300
-    local direction = config.direction or 0
-    local velocity = Velocity.create(0, 0, entity)
-    velocity:setFromPolar(speed, direction)
-    entity:addComponent('velocity', velocity)
-
-    -- Add Hitbox component
-    local hitbox = Hitbox.create(
-        config.hitboxWidth or 8,
-        config.hitboxHeight or 8,
-        0, 0,
-        entity
-    )
-    hitbox.type = 'hitbox'
-    hitbox.team = config.team or 'neutral'
-    entity:addComponent('hitbox', hitbox)
-
-    -- Add ProjectileData component
-    local projectileData = ProjectileData.create({
-        damage = config.damage or 10,
-        owner = config.owner,
-        team = config.team or 'neutral',
-        lifetime = config.lifetime or 5.0,
-        piercing = config.piercing or false,
-        maxPierceCount = config.maxPierceCount or 1,
-        gravity = config.gravity or 0,
-        projectileType = config.projectileType or 'generic'
-    }, entity)
-    entity:addComponent('projectiledata', projectileData)
-
-    -- Add Sprite component
-    local sprite = Sprite.create({
-        r = config.r or 1,
-        g = config.g or 1,
-        b = config.b or 1,
-        a = config.a or 1,
-        width = config.width or 8,
-        height = config.height or 8,
-        rotation = direction,
-        shape = config.shape or 'rectangle',
-        layer = config.layer or 5
-    }, entity)
-    entity:addComponent('sprite', sprite)
-
-    -- Add to world
     if world then
         world:addEntity(entity)
     end
 
     return entity
+end
+
+-- Add Position component
+function Projectile.addPositionComponent(entity, config)
+    local position = Position.create(config.x, config.y, entity)
+    entity:addComponent('position', position)
+end
+
+-- Add Velocity component
+function Projectile.addVelocityComponent(entity, config)
+    local velocity = Velocity.create(0, 0, entity)
+    velocity:setFromPolar(config.speed, config.direction)
+    entity:addComponent('velocity', velocity)
+end
+
+-- Add Hitbox component
+function Projectile.addHitboxComponent(entity, config)
+    local hitbox = Hitbox.create(
+        config.hitboxWidth,
+        config.hitboxHeight,
+        0, 0,
+        entity
+    )
+    hitbox.type = 'hitbox'
+    hitbox.team = config.team
+    entity:addComponent('hitbox', hitbox)
+end
+
+-- Add ProjectileData component
+function Projectile.addProjectileDataComponent(entity, config)
+    local projectileData = ProjectileData.create({
+        damage = config.damage,
+        owner = config.owner,
+        team = config.team,
+        lifetime = config.lifetime,
+        piercing = config.piercing,
+        maxPierceCount = config.maxPierceCount,
+        gravity = config.gravity,
+        projectileType = config.projectileType
+    }, entity)
+    entity:addComponent('projectiledata', projectileData)
+end
+
+-- Add Sprite component
+function Projectile.addSpriteComponent(entity, config)
+    local sprite = Sprite.create({
+        r = config.r,
+        g = config.g,
+        b = config.b,
+        a = config.a,
+        width = config.width,
+        height = config.height,
+        rotation = config.direction,
+        shape = config.shape,
+        layer = config.layer
+    }, entity)
+    entity:addComponent('sprite', sprite)
 end
 
 -- Create an arrow projectile (Archer)

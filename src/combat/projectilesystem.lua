@@ -17,118 +17,10 @@ end
 function ProjectileSystem:update(dt)
     local entitiesToRemove = {}
 
-    -- Get all entities with projectile components
     for _, entity in ipairs(self.world:getEntitiesWithComponents({'position', 'velocity', 'projectiledata'})) do
-        local position = entity:getComponent('position')
-        local velocity = entity:getComponent('velocity')
-        local projectileData = entity:getComponent('projectiledata')
-        local sprite = entity:getComponent('sprite')
-        local shouldContinue = false
-
-        -- Update lifetime
-        projectileData.currentLifetime = projectileData.currentLifetime + dt
-
-        -- Check if expired
-        if projectileData:hasExpired() then
+        local shouldRemove = self:updateProjectile(entity, dt, entitiesToRemove)
+        if shouldRemove then
             table.insert(entitiesToRemove, entity)
-            EventBus.emit(Constants.EVENTS.PROJECTILE_EXPIRED, {
-                projectile = entity,
-                position = { x = position.x, y = position.y }
-            })
-            shouldContinue = true
-        end
-
-        if not shouldContinue then
-            -- Apply gravity (optional)
-            if projectileData.gravity > 0 then
-                velocity.vy = velocity.vy + projectileData.gravity * dt
-            end
-
-            -- Apply homing (optional)
-            if projectileData.homing and projectileData.homingTarget then
-                local target = projectileData.homingTarget
-                local targetPos = target:getComponent('position')
-
-                if targetPos then
-                    local dx = targetPos.x - position.x
-                    local dy = targetPos.y - position.y
-                    local targetAngle = math.atan2(dy, dx)
-                    local currentAngle = velocity:getDirection()
-
-                    -- Smoothly turn toward target
-                    local angleDiff = targetAngle - currentAngle
-                    -- Normalize angle to [-pi, pi]
-                    if angleDiff > math.pi then angleDiff = angleDiff - 2 * math.pi end
-                    if angleDiff < -math.pi then angleDiff = angleDiff + 2 * math.pi end
-
-                    local turnSpeed = projectileData.homingStrength * dt
-                    local newAngle = currentAngle + math.max(-turnSpeed, math.min(turnSpeed, angleDiff))
-
-                    local speed = velocity:getSpeed()
-                    velocity:setFromPolar(speed, newAngle)
-                end
-            end
-
-            -- Update position
-            position:move(velocity.vx * dt, velocity.vy * dt)
-
-            -- Update sprite rotation to match direction
-            if sprite then
-                sprite:setRotation(velocity:getDirection())
-            end
-
-            -- Check collisions with other entities
-            local hitbox = entity:getComponent('hitbox')
-            if hitbox then
-                local projectileBounds = hitbox:getBounds(position)
-
-                -- Check all entities for collision
-                for _, otherEntity in ipairs(self.world.entities) do
-                    if not shouldContinue then
-                        -- Don't collide with self or owner
-                        if otherEntity.id ~= entity.id and
-                           (not projectileData.owner or otherEntity.id ~= projectileData.owner.id) then
-
-                            local otherHitbox = otherEntity:getComponent('hitbox')
-                            local otherPosition = otherEntity:getComponent('position')
-
-                            -- Check if other entity has hurtbox
-                            if otherHitbox and otherPosition and otherHitbox.type == 'hurtbox' then
-                                -- Check team (don't hit friendly entities)
-                                if self:shouldCollide(hitbox.team, otherHitbox.team) then
-                                    local otherBounds = otherHitbox:getBounds(otherPosition)
-
-                                    -- AABB collision check
-                                    if self:checkAABB(projectileBounds, otherBounds) then
-                                        -- Can we hit this entity?
-                                        if projectileData:canHit(otherEntity) then
-                                            -- Apply damage
-                                            self:applyDamage(entity, otherEntity, projectileData)
-
-                                            -- Mark as hit
-                                            projectileData:markHit(otherEntity)
-
-                                            -- Emit hit event
-                                            EventBus.emit(Constants.EVENTS.PROJECTILE_HIT, {
-                                                projectile = entity,
-                                                target = otherEntity,
-                                                damage = projectileData.damage,
-                                                position = { x = position.x, y = position.y }
-                                            })
-
-                                            -- Check if should despawn
-                                            if projectileData:shouldDespawnOnHit() then
-                                                table.insert(entitiesToRemove, entity)
-                                                shouldContinue = true
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
         end
     end
 
@@ -136,6 +28,150 @@ function ProjectileSystem:update(dt)
     for _, entity in ipairs(entitiesToRemove) do
         self.world:removeEntity(entity)
     end
+end
+
+-- Update a single projectile
+function ProjectileSystem:updateProjectile(entity, dt, entitiesToRemove)
+    local position = entity:getComponent('position')
+    local velocity = entity:getComponent('velocity')
+    local projectileData = entity:getComponent('projectiledata')
+    local sprite = entity:getComponent('sprite')
+
+    -- Update lifetime
+    projectileData.currentLifetime = projectileData.currentLifetime + dt
+
+    -- Check if expired
+    if projectileData:hasExpired() then
+        self:emitExpiredEvent(entity, position)
+        return true
+    end
+
+    self:applyPhysics(velocity, projectileData, dt)
+    self:applyHoming(position, velocity, projectileData, dt)
+
+    -- Update position
+    position:move(velocity.vx * dt, velocity.vy * dt)
+
+    -- Update sprite rotation
+    if sprite then
+        sprite:setRotation(velocity:getDirection())
+    end
+
+    -- Check collisions
+    return self:checkProjectileCollisions(entity, position, projectileData)
+end
+
+-- Emit projectile expired event
+function ProjectileSystem:emitExpiredEvent(entity, position)
+    EventBus.emit(Constants.EVENTS.PROJECTILE_EXPIRED, {
+        projectile = entity,
+        position = { x = position.x, y = position.y }
+    })
+end
+
+-- Apply gravity to projectile
+function ProjectileSystem:applyPhysics(velocity, projectileData, dt)
+    if projectileData.gravity > 0 then
+        velocity.vy = velocity.vy + projectileData.gravity * dt
+    end
+end
+
+-- Apply homing behavior
+function ProjectileSystem:applyHoming(position, velocity, projectileData, dt)
+    if not projectileData.homing or not projectileData.homingTarget then
+        return
+    end
+
+    local targetPos = projectileData.homingTarget:getComponent('position')
+    if not targetPos then
+        return
+    end
+
+    local dx = targetPos.x - position.x
+    local dy = targetPos.y - position.y
+    local targetAngle = math.atan2(dy, dx)
+    local currentAngle = velocity:getDirection()
+
+    -- Normalize angle to [-pi, pi]
+    local angleDiff = targetAngle - currentAngle
+    if angleDiff > math.pi then angleDiff = angleDiff - 2 * math.pi end
+    if angleDiff < -math.pi then angleDiff = angleDiff + 2 * math.pi end
+
+    local turnSpeed = projectileData.homingStrength * dt
+    local newAngle = currentAngle + math.max(-turnSpeed, math.min(turnSpeed, angleDiff))
+
+    local speed = velocity:getSpeed()
+    velocity:setFromPolar(speed, newAngle)
+end
+
+-- Check projectile collisions with all entities
+function ProjectileSystem:checkProjectileCollisions(entity, position, projectileData)
+    local hitbox = entity:getComponent('hitbox')
+    if not hitbox then
+        return false
+    end
+
+    local projectileBounds = hitbox:getBounds(position)
+
+    for _, otherEntity in ipairs(self.world.entities) do
+        if self:shouldCheckCollision(entity, otherEntity, projectileData) then
+            local hit = self:checkEntityCollision(entity, otherEntity, hitbox, projectileBounds, position, projectileData)
+            if hit then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+-- Check if should check collision between projectile and entity
+function ProjectileSystem:shouldCheckCollision(entity, otherEntity, projectileData)
+    if otherEntity.id == entity.id then
+        return false
+    end
+
+    if projectileData.owner and otherEntity.id == projectileData.owner.id then
+        return false
+    end
+
+    return true
+end
+
+-- Check collision between projectile and a single entity
+function ProjectileSystem:checkEntityCollision(entity, otherEntity, hitbox, projectileBounds, position, projectileData)
+    local otherHitbox = otherEntity:getComponent('hitbox')
+    local otherPosition = otherEntity:getComponent('position')
+
+    if not otherHitbox or not otherPosition or otherHitbox.type ~= 'hurtbox' then
+        return false
+    end
+
+    if not self:shouldCollide(hitbox.team, otherHitbox.team) then
+        return false
+    end
+
+    local otherBounds = otherHitbox:getBounds(otherPosition)
+    if not self:checkAABB(projectileBounds, otherBounds) then
+        return false
+    end
+
+    if not projectileData:canHit(otherEntity) then
+        return false
+    end
+
+    -- Apply damage and effects
+    self:applyDamage(entity, otherEntity, projectileData)
+    projectileData:markHit(otherEntity)
+
+    EventBus.emit(Constants.EVENTS.PROJECTILE_HIT, {
+        projectile = entity,
+        target = otherEntity,
+        damage = projectileData.damage,
+        position = { x = position.x, y = position.y }
+    })
+
+    return projectileData:shouldDespawnOnHit()
 end
 
 -- Check if two teams should collide

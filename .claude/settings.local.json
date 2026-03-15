@@ -12,7 +12,8 @@
       "Bash(make:*)",
       "Bash(done)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(xargs:*)"
     ]
   }
 }
