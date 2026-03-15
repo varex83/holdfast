@@ -36,8 +36,9 @@ end
 
 -- Call when player presses E. Starts harvesting the nearest eligible node.
 -- Returns true if a harvest was started.
-function HarvestManager:tryStart(ptx, pty, nodeManager)
+function HarvestManager:tryStart(ptx, pty, nodeManager, inventory)
     if self._active then return false end  -- already harvesting
+    if inventory and inventory:isFull() then return false end
     local node = self:nearestNode(ptx, pty, nodeManager)
     if not node then return false end
 

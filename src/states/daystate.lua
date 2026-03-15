@@ -13,6 +13,9 @@ local FogOfWar       = require("src.world.fogofwar")
 local NodeManager    = require("src.resources.nodemanager")
 local HarvestManager = require("src.resources.harvesting")
 local RespawnManager = require("src.resources.respawn")
+local Inventory      = require("src.inventory.inventory")
+local SupplyDepot    = require("src.inventory.supplydepot")
+local HUD            = require("src.ui.hud")
 
 local DayState = Class:extend()
 
@@ -38,11 +41,9 @@ function DayState:new(game)
     self.respawn  = respawn
     self.harvest  = HarvestManager(game.eventBus)
 
-    -- Placeholder inventory (replaced by real Inventory in Week 5)
-    self.inventory = { items = {}, add = function(inv, rtype, amt)
-        inv.items[rtype] = (inv.items[rtype] or 0) + amt
-        print("Collected " .. amt .. "x " .. rtype)
-    end }
+    self.inventory = Inventory("scout")   -- placeholder class; set by class select later
+    self.depot     = SupplyDepot(2, 2, game.eventBus)  -- base depot at tile (2,2)
+    self.hud       = HUD()
 
     self.player = { tx = 0.0, ty = 0.0, speed = 200 }
 end
@@ -197,49 +198,37 @@ function DayState:draw()
     self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
     self.harvest:draw()
 
-    -- Player dot
-    local psx, psy = Iso.tileToScreen(self.player.tx, self.player.ty)
-    love.graphics.setColor(1, 0.9, 0.1, 1)
-    love.graphics.circle("fill", psx, psy + 8, 10)
-    love.graphics.setColor(0.6, 0.5, 0.0, 1)
-    love.graphics.circle("line", psx, psy + 8, 10)
+    -- Player and depot depth-sorted (painter's algorithm by screen Y)
+    local psx, psy   = Iso.tileToScreen(self.player.tx, self.player.ty)
+    local _, dsy     = Iso.tileToScreen(self.depot.tx,  self.depot.ty)
+    local depotVis   = self.fog:isVisible(self.depot.tx, self.depot.ty)
+
+    local function drawPlayer()
+        love.graphics.setColor(1, 0.9, 0.1, 1)
+        love.graphics.circle("fill", psx, psy + 8, 10)
+        love.graphics.setColor(0.6, 0.5, 0.0, 1)
+        love.graphics.circle("line", psx, psy + 8, 10)
+    end
+
+    local function drawDepot()
+        if depotVis then
+            self.depot:draw()
+            if self.depot:isNearby(self.player.tx, self.player.ty) then
+                self.depot:drawNearbyHint()
+            end
+        end
+    end
+
+    -- Object with smaller screen-Y is further back → draw first
+    if psy + 8 < dsy + 16 then
+        drawDepot() ; drawPlayer()
+    else
+        drawPlayer() ; drawDepot()
+    end
 
     self.camera:clear()
 
-    -- HUD
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setFont(self.font)
-    love.graphics.print("Day " .. self.game.dayCounter, 20, 20)
-
-    local minutes = math.floor(self.timeRemaining / 60)
-    local seconds = math.floor(self.timeRemaining % 60)
-    love.graphics.print(string.format("Time: %02d:%02d", minutes, seconds), 20, 50)
-
-    love.graphics.setFont(self.smallFont)
-    love.graphics.print(
-        string.format("Tile: (%.0f, %.0f)", self.player.tx, self.player.ty), 20, 84)
-    self:_drawInventoryHUD()
-
-    local input = self.game.input
-    local controls
-    if input:isUsingGamepad() then
-        controls = "Left Stick: move  |  X: harvest  |  " ..
-                   input:getControlPrompt("esc", "b", "menu")
-    else
-        controls = "WASD: move  |  E: harvest  |  Scroll: zoom  |  ESC: menu"
-    end
-    love.graphics.print(controls, 20, love.graphics.getHeight() - 22)
-
-    love.graphics.setColor(1, 1, 1, 1)
-end
-
-function DayState:_drawInventoryHUD()
-    local items = self.inventory.items
-    local y = 106
-    for rtype, amt in pairs(items) do
-        love.graphics.print(rtype .. ": " .. amt, 20, y)
-        y = y + 16
-    end
+    self.hud:draw(self.game, self.inventory, self.depot, self.player)
 end
 
 function DayState:keypressed(key, scancode, isrepeat)
@@ -248,7 +237,11 @@ function DayState:keypressed(key, scancode, isrepeat)
     elseif key == "space" then
         self.game.stateMachine:setState("night")
     elseif key == "e" then
-        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes)
+        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+    elseif key == "f" then
+        if self.depot:isNearby(self.player.tx, self.player.ty) then
+            self.depot:depositAll(self.inventory)
+        end
     end
 end
 
@@ -258,7 +251,11 @@ function DayState:gamepadPressed(joystick, button)
     elseif button == "y" then
         self.game.stateMachine:setState("night")
     elseif button == "x" then
-        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes)
+        self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
+    elseif button == "square" or button == "leftshoulder" then
+        if self.depot:isNearby(self.player.tx, self.player.ty) then
+            self.depot:depositAll(self.inventory)
+        end
     end
 end
 
