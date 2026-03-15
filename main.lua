@@ -15,7 +15,7 @@ function love.load()
     math.randomseed(os.time())
 
     -- Initialize game
-    game = Game.new()
+    game = Game()
     game:load()
 
     print("Holdfast initialized successfully!")

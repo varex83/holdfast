@@ -22,8 +22,8 @@ function Game:new()
 
     -- Core systems
     self.eventBus = EventBus.new()
-    self.stateMachine = StateMachine.new(self.eventBus)
-    self.world = World.new()
+    self.stateMachine = StateMachine(self.eventBus)
+    self.world = World()
     self.debug = Debug.new(self)
 
     -- Game state
