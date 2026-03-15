@@ -50,7 +50,7 @@ function DayState:new(game)
     self.game          = game
     self.font          = love.graphics.newFont(24)
     self.smallFont     = love.graphics.newFont(14)
-    self.timeRemaining = 600
+    self.timeRemaining = 270
 
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()

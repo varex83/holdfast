@@ -175,7 +175,7 @@ function HUD:_drawControls(input, sh, sw, ghost)
 
     local hints
     if input and input:isUsingGamepad() then
-        hints = "Left Stick: move  |  X: harvest  |  RB: build  |  в–і: skip night  |  в—‹: menu  |  в–Ў: deposit"
+        hints = "Left Stick: move  |  X: harvest  |  RB: build  |  B: menu  |  Square/LB: deposit"
     else
         hints = "WASD: move  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
     end
@@ -185,3 +185,5 @@ function HUD:_drawControls(input, sh, sw, ghost)
 end
 
 return HUD
+
+

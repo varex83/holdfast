@@ -8,7 +8,7 @@ function NightState:new(game)
     self.game = game
     self.font = nil  -- Lazy loaded
     self.smallFont = nil  -- Lazy loaded
-    self.timeRemaining = 300  -- 5 minutes
+    self.timeRemaining = 210  -- 3:30 minutes
 end
 
 function NightState:enter()
