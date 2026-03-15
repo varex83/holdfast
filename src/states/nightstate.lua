@@ -75,12 +75,9 @@ function NightState:draw()
 
     local input = self.game.input
     if input:isUsingGamepad() then
-        love.graphics.print(input:getControlPrompt("space", "y", "skip to day (demo)"),
-                           20, love.graphics.getHeight() - 40)
         love.graphics.print(input:getControlPrompt("esc", "b", "return to menu"),
                            20, love.graphics.getHeight() - 20)
     else
-        love.graphics.print("Press SPACE to skip to day (demo)", 20, love.graphics.getHeight() - 40)
         love.graphics.print("Press ESC to return to menu", 20, love.graphics.getHeight() - 20)
     end
 
@@ -91,18 +88,12 @@ end
 function NightState:keypressed(key, scancode, isrepeat)
     if key == "escape" then
         self.game.stateMachine:setState("menu")
-    elseif key == "space" then
-        -- Skip to day (for testing)
-        self.game.stateMachine:setState("day")
     end
 end
 
 function NightState:gamepadPressed(joystick, button)
     if button == "b" then  -- Circle button on DualSense
         self.game.stateMachine:setState("menu")
-    elseif button == "y" then  -- Triangle button on DualSense
-        -- Skip to day (for testing)
-        self.game.stateMachine:setState("day")
     end
 end
 

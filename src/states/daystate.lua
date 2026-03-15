@@ -541,7 +541,7 @@ function DayState:draw()
     self.harvest:draw()
 
     local gtx, gty = self:_ghostTile()
-    self.ghost:draw(gtx, gty, self.buildings, self.depot)
+    self.ghost:draw(gtx, gty, self.buildings, self.depot, self.inventory)
 
     if self.debugMode then
         self:drawDebugWorld(drawList)
@@ -642,8 +642,6 @@ function DayState:keypressed(key, scancode, isrepeat)
         else
             self.game.stateMachine:setState("menu")
         end
-    elseif key == "space" then
-        self.game.stateMachine:setState("night")
     elseif key == "f3" then
         self.debugMode = not self.debugMode
     elseif key == "b" then
@@ -655,7 +653,7 @@ function DayState:keypressed(key, scancode, isrepeat)
     elseif key == "r" then
         if self.ghost:isActive() then
             local tx, ty = self:_ghostTile()
-            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
         end
     elseif key == "e" then
         if not self.ghost:isActive() then
@@ -675,8 +673,6 @@ function DayState:gamepadPressed(joystick, button)
         else
             self.game.stateMachine:setState("menu")
         end
-    elseif button == "y" then
-        self.game.stateMachine:setState("night")
     elseif button == "rightshoulder" then
         if self.ghost:isActive() then
             self.ghost:cycleType()
@@ -686,7 +682,7 @@ function DayState:gamepadPressed(joystick, button)
     elseif button == "a" then
         if self.ghost:isActive() then
             local tx, ty = self:_ghostTile()
-            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot)
+            self.buildings:place(self.ghost:currentType(), tx, ty, self.depot, self.inventory)
         end
     elseif button == "x" then
         if not self.ghost:isActive() then

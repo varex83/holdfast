@@ -27,7 +27,7 @@ function BuildGhost:cycleType()
 end
 
 -- Draw the ghost at tile (tx, ty).
-function BuildGhost:draw(tx, ty, buildManager, depot)
+function BuildGhost:draw(tx, ty, buildManager, depot, inventory)
     if not self._active then return end
 
     local btype = self:currentType()
@@ -35,7 +35,7 @@ function BuildGhost:draw(tx, ty, buildManager, depot)
     local sx, sy = Iso.tileToScreen(tx, ty)
 
     local occupied   = buildManager:isOccupied(tx, ty)
-    local affordable = buildManager:canAfford(btype, depot)
+    local affordable = buildManager:canAfford(btype, depot, inventory)
     local valid      = not occupied and affordable
 
     local pulse = 0.50 + 0.25 * math.sin(love.timer.getTime() * 5)
