@@ -559,38 +559,42 @@ function DayState:draw()
     love.graphics.setColor(1, 1, 1, 1)
 end
 
+function DayState:_drawDebugTile(e)
+    local def = Tile.get(e.t)
+    if def and def.collision and def.collision.shape == "circle" then
+        local ox = def.collision.offsetX or 0
+        local oy = def.collision.offsetY or 0
+        local sx, sy = Iso.tileToScreen(e.tx + ox, e.ty + oy)
+        love.graphics.setColor(1, 0.45, 0.15, 0.8)
+        love.graphics.circle("line", sx, sy + Iso.TILE_H * 0.5, def.collision.radius * Iso.TILE_W)
+        return true
+    elseif def and def.collision and def.collision.shape == "box" then
+        local ox = def.collision.offsetX or 0
+        local oy = def.collision.offsetY or 0
+        local w  = (def.collision.width  or 0.25) * Iso.TILE_W
+        local h  = (def.collision.height or 0.25) * Iso.TILE_H * 2
+        local sx, sy = Iso.tileToScreen(e.tx + ox, e.ty + oy)
+        love.graphics.setColor(1, 0.45, 0.15, 0.8)
+        love.graphics.rectangle("line", sx - w * 0.5, sy + Iso.TILE_H * 0.5 - h * 0.5, w, h)
+        return true
+    elseif e.t == "water" then
+        local sx, sy = Iso.tileToScreen(e.tx, e.ty)
+        love.graphics.setColor(0.15, 0.7, 1, 0.45)
+        love.graphics.polygon("line",
+            sx, sy,
+            sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
+            sx, sy + Iso.TILE_H,
+            sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
+    end
+    return false
+end
+
 function DayState:drawDebugWorld(drawList)
     local visibleColliderCount = 0
 
     for _, e in ipairs(drawList) do
-        if e.visible then
-            local def = Tile.get(e.t)
-            if def and def.collision and def.collision.shape == "circle" then
-                local offsetX = def.collision.offsetX or 0
-                local offsetY = def.collision.offsetY or 0
-                local sx, sy  = Iso.tileToScreen(e.tx + offsetX, e.ty + offsetY)
-                local radius  = def.collision.radius * Iso.TILE_W
-                love.graphics.setColor(1, 0.45, 0.15, 0.8)
-                love.graphics.circle("line", sx, sy + Iso.TILE_H * 0.5, radius)
-                visibleColliderCount = visibleColliderCount + 1
-            elseif def and def.collision and def.collision.shape == "box" then
-                local offsetX = def.collision.offsetX or 0
-                local offsetY = def.collision.offsetY or 0
-                local width = (def.collision.width or 0.25) * Iso.TILE_W
-                local height = (def.collision.height or 0.25) * Iso.TILE_H * 2
-                local sx, sy = Iso.tileToScreen(e.tx + offsetX, e.ty + offsetY)
-                love.graphics.setColor(1, 0.45, 0.15, 0.8)
-                love.graphics.rectangle("line", sx - width * 0.5, sy + Iso.TILE_H * 0.5 - height * 0.5, width, height)
-                visibleColliderCount = visibleColliderCount + 1
-            elseif e.t == "water" then
-                local sx, sy = Iso.tileToScreen(e.tx, e.ty)
-                love.graphics.setColor(0.15, 0.7, 1, 0.45)
-                love.graphics.polygon("line",
-                    sx, sy,
-                    sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
-                    sx, sy + Iso.TILE_H,
-                    sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
-            end
+        if e.visible and self:_drawDebugTile(e) then
+            visibleColliderCount = visibleColliderCount + 1
         end
     end
 
@@ -598,9 +602,8 @@ function DayState:drawDebugWorld(drawList)
     self.playerCharacter.position.x = psx
     self.playerCharacter.position.y = psy + 2
 
-    local playerBounds = nil
     if self.playerCharacter.hitbox and self.playerCharacter.position then
-        playerBounds = self.playerCharacter.hitbox:getBounds(self.playerCharacter.position)
+        local playerBounds = self.playerCharacter.hitbox:getBounds(self.playerCharacter.position)
         love.graphics.setColor(0.2, 0.95, 1, 0.9)
         love.graphics.rectangle(
             "line",
