@@ -13,6 +13,7 @@ local MenuState = require("src.states.menustate")
 local DayState = require("src.states.daystate")
 local NightState = require("src.states.nightstate")
 local GameOverState = require("src.states.gameoverstate")
+local TestState = require("src.states.teststate")
 
 local Game = Class:extend()
 
@@ -42,11 +43,13 @@ function Game:load()
     local dayState = DayState(self)
     local nightState = NightState(self)
     local gameOverState = GameOverState(self)
+    local testState = TestState(self)
 
     self.stateMachine:addState("menu", menuState)
     self.stateMachine:addState("day", dayState)
     self.stateMachine:addState("night", nightState)
     self.stateMachine:addState("gameover", gameOverState)
+    self.stateMachine:addState("test", testState)
 
     -- Start in menu state
     self.stateMachine:setState("menu")

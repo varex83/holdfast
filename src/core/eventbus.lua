@@ -79,4 +79,17 @@ function EventBus:getListenerCount(event)
     return count
 end
 
+-- Global singleton for convenience
+local globalBus = EventBus.new()
+
+-- Add static emit method for global bus
+EventBus.emit = function(event, data)
+    globalBus:publish(event, data)
+end
+
+-- Add static on method for global bus
+EventBus.on = function(event, callback)
+    return globalBus:subscribe(event, callback)
+end
+
 return EventBus

@@ -42,6 +42,14 @@ return {
     CLASS_ENGINEER = "engineer",
     CLASS_SCOUT = "scout",
 
+    -- Character Classes (nested for convenience)
+    CLASS = {
+        WARRIOR = "warrior",
+        ARCHER = "archer",
+        ENGINEER = "engineer",
+        SCOUT = "scout",
+    },
+
     -- Enemy Types
     ENEMY_FLYSWARM = "flyswarm",
     ENEMY_SHAMBLER = "shambler",
@@ -93,6 +101,30 @@ return {
     EVENT_BUILDING_DESTROYED = "building_destroyed",
     EVENT_ENEMY_SPAWNED = "enemy_spawned",
     EVENT_ENEMY_KILLED = "enemy_killed",
+
+    -- Events (nested for convenience)
+    EVENTS = {
+        DAY_START = "day_start",
+        NIGHT_START = "night_start",
+        WAVE_START = "wave_start",
+        WAVE_END = "wave_end",
+        PLAYER_DEATH = "player_death",
+        PLAYER_RESPAWN = "player_respawn",
+        PLAYER_ATTACK = "player_attack",
+        PLAYER_ABILITY = "player_ability",
+        BASE_DESTROYED = "base_destroyed",
+        RESOURCE_COLLECTED = "resource_collected",
+        BUILDING_PLACED = "building_placed",
+        BUILDING_DESTROYED = "building_destroyed",
+        ENEMY_SPAWNED = "enemy_spawned",
+        ENEMY_KILLED = "enemy_killed",
+        ENTITY_DAMAGED = "entity_damaged",
+        ENTITY_HEALED = "entity_healed",
+        ENTITY_DIED = "entity_died",
+        ENTITY_RESPAWNED = "entity_respawned",
+        PROJECTILE_HIT = "projectile_hit",
+        PROJECTILE_EXPIRED = "projectile_expired",
+    },
 
     -- Physics
     GRAVITY = 0,  -- Top-down game, no gravity

@@ -10,6 +10,7 @@ function MenuState:new(game)
     self.smallFont = nil  -- Lazy loaded
     self.selectedOption = 1
     self.options = {
+        "Test Phase 1",
         "New Game",
         "Load Game",
         "Settings",
@@ -134,15 +135,18 @@ end
 
 function MenuState:selectOption()
     if self.selectedOption == 1 then
+        -- Test Phase 1
+        self.game.stateMachine:setState("test")
+    elseif self.selectedOption == 2 then
         -- New Game
         self.game.stateMachine:setState("day")
-    elseif self.selectedOption == 2 then
+    elseif self.selectedOption == 3 then
         -- Load Game (not implemented yet)
         print("Load Game not implemented yet")
-    elseif self.selectedOption == 3 then
+    elseif self.selectedOption == 4 then
         -- Settings (not implemented yet)
         print("Settings not implemented yet")
-    elseif self.selectedOption == 4 then
+    elseif self.selectedOption == 5 then
         -- Quit
         love.event.quit()
     end
