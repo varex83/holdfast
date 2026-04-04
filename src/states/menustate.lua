@@ -430,7 +430,6 @@ function MenuState:mousepressed(x, y, button)
         self:selectOption()
     end
 end
-
 function MenuState:gamepadPressed(joystick, button)
     if button == "dpup" then
         self.selectedOption = self.selectedOption - 1

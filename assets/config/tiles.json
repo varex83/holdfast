@@ -1,9 +1,7 @@
 {
   "tiles":{
     "water":{
-      "collision":{
-        "shape":"none"
-      },
+      "collision":{ "shape":"none" },
       "name":"Water",
       "overlay":[],
       "ground":{
@@ -15,15 +13,13 @@
       "walkable":false
     },
     "sand":{
-      "collision":{
-        "shape":"none"
-      },
+      "collision":{ "shape":"none" },
       "name":"Sand",
       "overlay":[],
       "ground":{
         "tint":[0.96,0.88,0.62],
         "tileIds":[0],
-        "atlases":["tiles.path","tiles.grass_2"]
+        "atlas":"tiles.path"
       },
       "color":[0.85,0.8,0.5],
       "walkable":true
@@ -46,7 +42,7 @@
       "ground":{
         "tint":[0.78,0.8,0.84],
         "tileIds":[0],
-        "atlases":["tiles.cave_floor","tiles.path"]
+        "atlas":"tiles.cave_floor"
       },
       "color":[0.4,0.4,0.4],
       "walkable":false
@@ -68,52 +64,182 @@
         "atlases":["trees.small_oak","trees.medium_oak","trees.small_spruce","trees.medium_spruce"]
       },
       "ground":{
-        "atlases":["tiles.grass_1","tiles.grass_2","tiles.grass_3","tiles.grass_4"],
+        "atlas":"tiles.grass_1",
         "tileIds":[0]
       },
       "color":[0.15,0.45,0.15],
       "walkable":false
     },
     "dirt":{
-      "collision":{
-        "shape":"none"
-      },
+      "collision":{ "shape":"none" },
       "name":"Dirt",
       "overlay":[],
       "ground":{
         "tint":[0.84,0.66,0.43],
         "tileIds":[0],
-        "atlases":["tiles.path","tiles.cave_floor"]
+        "atlas":"tiles.path"
       },
       "color":[0.6,0.45,0.25],
       "walkable":true
     },
     "grass":{
-      "collision":{
-        "shape":"none"
-      },
+      "collision":{ "shape":"none" },
       "name":"Grass",
       "overlay":[],
       "ground":{
-        "atlases":["tiles.grass_1","tiles.grass_2","tiles.grass_3","tiles.grass_4"],
+        "atlas":"tiles.grass_1",
         "tileIds":[0]
       },
       "color":[0.35,0.65,0.25],
       "walkable":true
     },
     "stone":{
-      "collision":{
-        "shape":"none"
-      },
+      "collision":{ "shape":"none" },
       "name":"Stone",
       "overlay":[],
       "ground":{
         "tint":[0.78,0.8,0.84],
         "tileIds":[0],
-        "atlases":["tiles.cave_floor","tiles.path"]
+        "atlas":"tiles.cave_floor"
       },
       "color":[0.55,0.55,0.55],
       "walkable":true
+    },
+    "beach":{
+      "collision":{ "shape":"none" },
+      "name":"Beach",
+      "overlay":[],
+      "ground":{
+        "atlas":"tiles.beach",
+        "tileIds":[0,1,2]
+      },
+      "color":[0.90,0.82,0.60],
+      "walkable":true
+    },
+    "flower":{
+      "collision":{ "shape":"none" },
+      "name":"Flower",
+      "overlay":{
+        "atlases":["props.flower_1","props.flower_2","props.flower_3","props.flower_4","props.flower_5"],
+        "tileIds":[0],
+        "scale":1.0,
+        "anchorX":8,
+        "anchorY":32,
+        "oy":-2,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "atlas":"tiles.grass_1",
+        "tileIds":[0]
+      },
+      "color":[0.40,0.70,0.30],
+      "walkable":true
+    },
+    "tall_grass":{
+      "collision":{ "shape":"none" },
+      "name":"Tall Grass",
+      "overlay":{
+        "atlases":["props.grass_anim_1","props.grass_anim_2","props.grass_anim_3"],
+        "frames":[0,1,2,3,4,5,6,7],
+        "frameDuration":0.13,
+        "scale":1.5,
+        "anchorX":8,
+        "anchorY":16,
+        "oy":-2,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "atlas":"tiles.grass_1",
+        "tileIds":[0]
+      },
+      "color":[0.30,0.60,0.20],
+      "walkable":true
+    },
+    "mushroom":{
+      "collision":{ "shape":"none" },
+      "name":"Mushroom",
+      "overlay":{
+        "atlases":["props.mushroom_1","props.mushroom_2","props.mushroom_3","props.mushroom_4","props.mushroom_5","props.mushroom_6","props.mushroom_7","props.mushroom_8"],
+        "tileIds":[0],
+        "scale":1.4,
+        "anchorX":8,
+        "anchorY":16,
+        "oy":-2,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "tint":[0.84,0.66,0.43],
+        "atlas":"tiles.path",
+        "tileIds":[0]
+      },
+      "color":[0.55,0.42,0.25],
+      "walkable":true
+    },
+    "lily_pad":{
+      "collision":{ "shape":"none" },
+      "name":"Lily Pad",
+      "overlay":{
+        "atlases":["props.lillypad_green_1","props.lillypad_green_2","props.lillypad_green_3","props.lillypad_red_1","props.lillypad_purple_1"],
+        "frames":[0,1,2,3,4,5,6,7],
+        "frameDuration":0.20,
+        "scale":1.2,
+        "anchorX":8,
+        "anchorY":16,
+        "oy":0,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "atlas":"tiles.water",
+        "frames":[0,1,2,3,4,5,6,7],
+        "frameDuration":0.18
+      },
+      "color":[0.20,0.50,0.30],
+      "walkable":false
+    },
+    "cattail":{
+      "collision":{ "shape":"none" },
+      "name":"Cattail",
+      "overlay":{
+        "atlases":["props.cattail_1","props.cattail_2","props.cattail_3","props.cattail_4","props.cattail_5"],
+        "frames":[0,1,2,3,4,5,6,7],
+        "frameDuration":0.15,
+        "scale":1.4,
+        "anchorX":8,
+        "anchorY":16,
+        "oy":-4,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "atlas":"tiles.water",
+        "frames":[0,1,2,3,4,5,6,7],
+        "frameDuration":0.18
+      },
+      "color":[0.15,0.40,0.25],
+      "walkable":false
+    },
+    "birch":{
+      "collision":{
+        "shape":"circle",
+        "radius":0.12,
+        "offsetX":0,
+        "offsetY":-0.51
+      },
+      "name":"Birch Tree",
+      "overlay":{
+        "atlases":["trees.small_birch","trees.medium_birch","trees.small_fruit"],
+        "tileIds":[1,2],
+        "scale":1.6,
+        "anchorX":16,
+        "anchorY":58,
+        "oy":2,
+        "tint":[1,1,1]
+      },
+      "ground":{
+        "atlas":"tiles.grass_1",
+        "tileIds":[0]
+      },
+      "color":[0.70,0.85,0.55],
+      "walkable":false
     }
   }
 }

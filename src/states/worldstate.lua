@@ -583,7 +583,7 @@ function WorldState:draw()
         self.dayPhase.harvestManager:draw()
 
         if self.dayPhase.buildGhost then
-            self.dayPhase.buildGhost:draw(self.dayPhase.buildManager, self.dayPhase.depot)
+            self.dayPhase.buildGhost:draw(self.dayPhase.buildManager, self.dayPhase.depot, self.inventory)
         end
     end
 

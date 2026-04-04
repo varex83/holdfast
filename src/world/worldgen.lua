@@ -36,54 +36,85 @@ end
 -- ─── Tile selection ──────────────────────────────────────────────────────────
 
 -- Returns the tile type string for a given world tile coordinate.
--- Two noise layers:
---   elevation – large features (water, plains, hills)
---   detail    – small features (trees, rocks, dirt patches)
+-- Uses two separate elevation signals:
+--   shore – very smooth (2 octaves, low frequency) for clean water/beach borders
+--   elev  – full detail (4 octaves) for land biome selection only
+--   moist – medium-scale vegetation moisture
+--   temp  – large-scale temperature (tree species)
 function WorldGen.getTileAt(tx, ty)
-    local scale = 0.04  -- lower = larger features
+    local scale = 0.04
 
-    local elev   = octaveNoise(tx * scale,        ty * scale,        4, 0.5, 2.0)
-    local detail = octaveNoise(tx * scale * 3 + 100, ty * scale * 3 + 100, 2, 0.5, 2.0)
+    -- Smooth, low-frequency boundary used only for water/shore/sand thresholds.
+    -- Fewer octaves = no small dips that create water islands inside beach zones.
+    local shore = octaveNoise(tx * scale * 0.7,        ty * scale * 0.7,        2, 0.5, 2.0)
 
-    -- Water at low elevation
-    if elev < -0.35 then return "water" end
+    -- Full-detail elevation for land biome height (highland/rock detection).
+    local elev  = octaveNoise(tx * scale,               ty * scale,               4, 0.5, 2.0)
 
-    -- Sandy shores
-    if elev < -0.20 then return "sand" end
+    local moist = octaveNoise(tx * scale * 0.75 + 200,  ty * scale * 0.75 + 200,  3, 0.5, 2.0)
+    local temp  = octaveNoise(tx * scale * 0.5  + 400,  ty * scale * 0.5  + 400,  2, 0.6, 2.0)
 
-    -- Stone outcrops at high elevation + high detail
-    if elev > 0.35 and detail > 0.2 then return "rock" end
+    -- ── Water (decided by smooth shore signal) ────────────────────────────────
+    if shore < -0.42 then return "water" end
 
-    -- Dense forest in mid-high elevation
-    if elev > 0.10 and detail > 0.30 then return "tree" end
+    -- Shore fringe: use temp (slow-varying) for plant patches vs plain water
+    if shore < -0.28 then
+        if temp >  0.40 then return "lily_pad" end
+        if temp < -0.40 then return "cattail"  end
+        return "water"
+    end
 
-    -- Dirt patches
-    if detail < -0.25 then return "dirt" end
+    -- ── Shore ─────────────────────────────────────────────────────────────────
+    if shore < -0.14 then return "beach" end
+    if shore < -0.02 then return "sand"  end
 
-    -- Default: grass
+    -- ── Land (decided by full-detail elev + moist + temp) ────────────────────
+
+    -- Rocky highlands
+    if elev > 0.52 then return "rock" end
+    if elev > 0.42 and moist < 0.0 then return "rock" end
+
+    -- Forest zones driven by moisture bands
+    if moist > 0.45 then
+        if elev > 0.05 then
+            if temp < -0.20 then return "birch" end
+            return "tree"
+        end
+        if temp > 0.30 then return "mushroom" end
+        return "flower"
+    end
+
+    if moist > 0.15 then
+        if elev > 0.18 then
+            if temp < -0.15 then return "birch" end
+            return "tree"
+        end
+        if temp > 0.20 then return "flower" end
+        return "tall_grass"
+    end
+
+    if moist < -0.30 then return "dirt" end
     return "grass"
 end
 
 -- Returns a resource type string if a resource node should spawn at (tx, ty),
 -- or nil if no node. Called once when a chunk is first generated.
 function WorldGen.getResourceAt(tx, ty, tileType)
-    -- Resources only spawn on specific tile types
     local resourceMap = {
-        tree = "wood",
-        rock = "iron",   -- ore underneath rock outcrops
+        tree  = "wood",
+        birch = "wood",
+        rock  = "iron",
     }
     if resourceMap[tileType] then
-        -- Sparse placement: use a simple hash so it's deterministic
         local h = (tx * 374761393 + ty * 1234567891) % 100
-        if h < 60 then  -- 60% chance on eligible tile
-            return resourceMap[tileType]
-        end
+        if h < 60 then return resourceMap[tileType] end
     end
 
-    -- Occasional stone nodes on plain grass/dirt
-    if tileType == "grass" or tileType == "dirt" then
+    -- Occasional stone nodes on open ground
+    if tileType == "grass" or tileType == "dirt" or
+       tileType == "flower" or tileType == "tall_grass" then
         local h = (tx * 987654321 + ty * 123456789) % 100
-        if h < 3 then return "stone" end  -- 3% chance
+        if h < 3 then return "stone" end
     end
 
     return nil

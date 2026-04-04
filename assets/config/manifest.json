@@ -327,6 +327,186 @@
       "filter":"nearest",
       "tileHeight":16,
       "tileWidth":16
+    },
+    "tiles.beach":{
+      "path":"assets/Cute_Fantasy/Tiles/Beach/Beach_Tiles.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "trees.small_birch":{
+      "path":"assets/Cute_Fantasy/Trees/Small_Birch_Tree.png",
+      "filter":"nearest",
+      "tileHeight":64,
+      "tileWidth":32
+    },
+    "trees.medium_birch":{
+      "path":"assets/Cute_Fantasy/Trees/Medium_Birch_Tree.png",
+      "filter":"nearest",
+      "tileHeight":48,
+      "tileWidth":32
+    },
+    "trees.small_fruit":{
+      "path":"assets/Cute_Fantasy/Trees/Small_Fruit_Tree.png",
+      "filter":"nearest",
+      "tileHeight":64,
+      "tileWidth":32
+    },
+    "props.flower_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Flower_Animations/Not_Potted/Flowers_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":32,
+      "tileWidth":16
+    },
+    "props.flower_2":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Flower_Animations/Not_Potted/Flowers_2_Anim.png",
+      "filter":"nearest",
+      "tileHeight":32,
+      "tileWidth":16
+    },
+    "props.flower_3":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Flower_Animations/Not_Potted/Flowers_3_Anim.png",
+      "filter":"nearest",
+      "tileHeight":32,
+      "tileWidth":16
+    },
+    "props.flower_4":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Flower_Animations/Not_Potted/Flowers_4_Anim.png",
+      "filter":"nearest",
+      "tileHeight":32,
+      "tileWidth":16
+    },
+    "props.flower_5":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Flower_Animations/Not_Potted/Flowers_5_Anim.png",
+      "filter":"nearest",
+      "tileHeight":32,
+      "tileWidth":16
+    },
+    "props.grass_anim_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Grass_Animations/Grass_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.grass_anim_2":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Grass_Animations/Grass_2_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.grass_anim_3":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Grass_Animations/Grass_3_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_2":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_2_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_3":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_3_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_4":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_4_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_5":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_5_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_6":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_6_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_7":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_7_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.mushroom_8":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Muschroom_Animations/muschroom_8_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.cattail_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Cattail_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.cattail_2":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Cattail_2_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.cattail_3":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Cattail_3_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.cattail_4":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Cattail_4_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.cattail_5":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Cattail_5_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.lillypad_green_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Lillypad_Green_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.lillypad_green_2":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Lillypad_Green_2_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.lillypad_green_3":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Lillypad_Green_3_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.lillypad_red_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Lillypad_Red_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
+    },
+    "props.lillypad_purple_1":{
+      "path":"assets/Cute_Fantasy/Outdoor decoration/Outdoor_Decor_Animations/Water_Decor_Animations/Water_Plants/Lillypad_Purple_1_Anim.png",
+      "filter":"nearest",
+      "tileHeight":16,
+      "tileWidth":16
     }
   }
 }
