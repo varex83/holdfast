@@ -6,6 +6,34 @@ local Casino = Class:extend()
 
 local INTERACT_RADIUS = 3.0
 local SLOT_SYMBOLS = { "CHERRY", "BELL", "STAR", "7" }
+local SLOT_PAYTABLE = {
+    { symbols = { "7", "7", "7" }, multiplier = 25, label = "777 jackpot" },
+    { symbols = { "STAR", "STAR", "STAR" }, multiplier = 12, label = "Triple star" },
+    { symbols = { "BELL", "BELL", "BELL" }, multiplier = 6, label = "Triple bell" },
+    { symbols = { "CHERRY", "CHERRY", "CHERRY" }, multiplier = 4, label = "Triple cherry" },
+    { symbols = { "CHERRY", "CHERRY", "*" }, multiplier = 2, label = "Two cherries" },
+    { symbols = { "CHERRY", "*", "*" }, multiplier = 1, label = "Single cherry" },
+}
+
+local function matchesPattern(reels, pattern)
+    for i = 1, #pattern do
+        if pattern[i] ~= "*" and reels[i] ~= pattern[i] then
+            return false
+        end
+    end
+
+    return true
+end
+
+local function evaluateSpin(reels)
+    for _, entry in ipairs(SLOT_PAYTABLE) do
+        if matchesPattern(reels, entry.symbols) then
+            return entry
+        end
+    end
+
+    return nil
+end
 
 local function getCasinoImage()
     return AssetManager.getCurrent():getImage("buildings.basecore.house_hay_1")
@@ -52,13 +80,8 @@ end
 
 function Casino:resolveSlotSpin(spin, inventory)
     local left, middle, right = spin.reels[1], spin.reels[2], spin.reels[3]
-    local multiplier = 0
-
-    if left == right and right == middle then
-        multiplier = left == "7" and 3 or 2
-    elseif left == middle or middle == right or left == right then
-        multiplier = 1
-    end
+    local payoutEntry = evaluateSpin(spin.reels)
+    local multiplier = payoutEntry and payoutEntry.multiplier or 0
 
     local totalOut = 0
     if multiplier > 0 then
@@ -70,12 +93,10 @@ function Casino:resolveSlotSpin(spin, inventory)
     end
 
     local reels = string.format("[%s | %s | %s]", left, middle, right)
-    if multiplier == 3 then
-        return true, string.format("Slots jackpot %s  %d gold -> %d gold kept in inventory.", reels, spin.totalIn, totalOut)
-    elseif multiplier == 2 then
-        return true, string.format("Slots win %s  %d gold -> %d gold kept in inventory.", reels, spin.totalIn, totalOut)
-    elseif multiplier == 1 then
-        return true, string.format("Slots push %s  %d gold kept in inventory.", reels, totalOut)
+    if multiplier >= 12 then
+        return true, string.format("Slots jackpot %s  %s pays %dx: %d gold -> %d gold.", reels, payoutEntry.label, multiplier, spin.totalIn, totalOut)
+    elseif multiplier > 0 then
+        return true, string.format("Slots win %s  %s pays %dx: %d gold -> %d gold.", reels, payoutEntry.label, multiplier, spin.totalIn, totalOut)
     end
 
     return true, string.format("Slots lost %s  %d gold gone.", reels, spin.totalIn)
@@ -109,10 +130,11 @@ function Casino:drawNearbyHint()
     love.graphics.circle("line", sx, sy + 16, 36)
     love.graphics.setFont(font)
     love.graphics.setColor(1, 0.98, 0.90, alpha)
-    love.graphics.print("G: Gamble (30% double)", sx - 54, sy + 36)
+    love.graphics.print("G: Slots (777 pays 25x)", sx - 52, sy + 36)
 end
 
 Casino.INTERACT_RADIUS = INTERACT_RADIUS
 Casino.SLOT_SYMBOLS = SLOT_SYMBOLS
+Casino.SLOT_PAYTABLE = SLOT_PAYTABLE
 
 return Casino
