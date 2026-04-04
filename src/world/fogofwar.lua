@@ -57,19 +57,17 @@ function FogOfWar:getCachedType(tx, ty)
 end
 
 -- Returns "visible" | "explored" | "hidden"
-function FogOfWar:getState(tx, ty)
-    local key = tileKey(tx, ty)
-    if self._visible[key]  then return "visible"  end
-    if self._explored[key] then return "explored" end
-    return "hidden"
+-- Fog of war disabled: all tiles are always visible.
+function FogOfWar:getState(tx, ty) -- luacheck: ignore tx ty
+    return "visible"
 end
 
-function FogOfWar:isVisible(tx, ty)
-    return self._visible[tileKey(tx, ty)] == true
+function FogOfWar:isVisible(tx, ty) -- luacheck: ignore tx ty
+    return true
 end
 
-function FogOfWar:isExplored(tx, ty)
-    return self._explored[tileKey(tx, ty)] ~= nil
+function FogOfWar:isExplored(tx, ty) -- luacheck: ignore tx ty
+    return true
 end
 
 FogOfWar.VISION_RADIUS = VISION_RADIUS

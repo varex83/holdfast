@@ -62,7 +62,12 @@ local function mergeTables(dst, src)
 end
 
 local function chooseVariant(variants, tx, ty)
-    local hash = math.abs(tx * 73856093 + ty * 19349663)
+    -- Non-linear hash to avoid the regular checkerboard caused by linear
+    -- formulas with even-count variant lists (parity alternates per tile).
+    local hash = math.abs(
+        tx * 374761393 + ty * 1234567891 +
+        tx * ty * 6271 + tx * tx * 1301 + ty * ty * 7919
+    )
     return variants[(hash % #variants) + 1]
 end
 
@@ -259,16 +264,22 @@ function AssetManager:_resolveGroundData(def, tx, ty, timeSeconds)
     }
 end
 
-function AssetManager:_resolveOverlayImageData(def, tx, ty)
+function AssetManager:_resolveOverlayImageData(def, tx, ty, timeSeconds)
     if def.overlay.atlas or def.overlay.atlases then
         local atlasId = def.overlay.atlas
         if def.overlay.atlases then
             atlasId = chooseVariant(def.overlay.atlases, tx, ty)
         end
 
-        local tileId = def.overlay.tileId or 0
-        if def.overlay.tileIds then
+        local tileId
+        if def.overlay.frames then
+            local frameDuration = def.overlay.frameDuration or 0.2
+            local frameIndex = (math.floor((timeSeconds or 0) / frameDuration) % #def.overlay.frames) + 1
+            tileId = def.overlay.frames[frameIndex]
+        elseif def.overlay.tileIds then
             tileId = chooseVariant(def.overlay.tileIds, tx, ty)
+        else
+            tileId = def.overlay.tileId or 0
         end
 
         local atlas = self:getAtlas(atlasId)
@@ -304,7 +315,7 @@ function AssetManager:getTileRenderData(tileType, tx, ty, timeSeconds)
             anchorY = def.overlay.anchorY,
         }
 
-        overlay.image, overlay.quad = self:_resolveOverlayImageData(def, tx, ty)
+        overlay.image, overlay.quad = self:_resolveOverlayImageData(def, tx, ty, timeSeconds)
 
         result.overlay = overlay
     end

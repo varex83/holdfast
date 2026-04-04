@@ -430,15 +430,8 @@ function DayState:_queueTileOverlay(entry, renderData, dim, entityDrawList)
     }
 end
 
-function DayState:_drawVisibleTileOutline(entry)
-    if not entry.visible then return end
-    local sx, sy = Iso.tileToScreen(entry.tx, entry.ty)
-    love.graphics.setColor(0, 0, 0, 0.12)
-    love.graphics.polygon("line",
-        sx, sy,
-        sx + Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5,
-        sx, sy + Iso.TILE_H,
-        sx - Iso.TILE_W * 0.5, sy + Iso.TILE_H * 0.5)
+function DayState:_drawVisibleTileOutline(_entry)
+    -- Tile grid outline disabled — too prominent at full map visibility.
 end
 
 function DayState:_drawTerrain(drawList, worldTime, entityDrawList)
