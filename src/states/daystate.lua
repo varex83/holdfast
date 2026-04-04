@@ -24,6 +24,13 @@ local Constants      = require("data.constants")
 local CombatManager  = require("src.combat.combatmanager")
 
 local DayState = Class:extend()
+local SLOT_SYMBOLS = Casino.SLOT_SYMBOLS or { "CHERRY", "BELL", "STAR", "7" }
+local SLOT_PAYTABLE = Casino.SLOT_PAYTABLE or {}
+local SLOT_SYMBOL_INDEX = {}
+
+for index, symbol in ipairs(SLOT_SYMBOLS) do
+    SLOT_SYMBOL_INDEX[symbol] = index
+end
 
 local CLASS_WORLD_VISUALS = {
     [Constants.CLASS.WARRIOR] = {appearance = "knight_swordman", tint = {1.0, 1.0, 1.0, 1}},
@@ -61,6 +68,97 @@ local function screenDirToTile(sx, sy)
     local dty = sy / hh - sx / hw
     return dtx > 0 and 1 or (dtx < 0 and -1 or 0),
            dty > 0 and 1 or (dty < 0 and -1 or 0)
+end
+
+local function clamp(value, minValue, maxValue)
+    return math.max(minValue, math.min(maxValue, value))
+end
+
+local function easeOutCubic(t)
+    return 1 - (1 - t) ^ 3
+end
+
+local function copyArray(values)
+    local copy = {}
+    for i = 1, #values do
+        copy[i] = values[i]
+    end
+    return copy
+end
+
+local function getSlotSymbolAt(position)
+    local symbolCount = #SLOT_SYMBOLS
+    local wrapped = ((math.floor(position) % symbolCount) + symbolCount) % symbolCount
+    return SLOT_SYMBOLS[wrapped + 1]
+end
+
+local function drawStarShape(cx, cy, outerRadius, innerRadius, alpha)
+    local points = {}
+    for i = 0, 9 do
+        local angle = -math.pi * 0.5 + i * math.pi / 5
+        local radius = i % 2 == 0 and outerRadius or innerRadius
+        points[#points + 1] = cx + math.cos(angle) * radius
+        points[#points + 1] = cy + math.sin(angle) * radius
+    end
+
+    love.graphics.setColor(0.98, 0.82, 0.16, alpha)
+    love.graphics.polygon("fill", points)
+    love.graphics.setColor(0.76, 0.56, 0.10, alpha)
+    love.graphics.polygon("line", points)
+end
+
+local function drawSlotSymbol(symbol, cx, cy, size, alpha, font)
+    if symbol == "CHERRY" then
+        local radius = size * 0.20
+        local stemY = cy - size * 0.25
+        love.graphics.setLineWidth(math.max(1, size * 0.06))
+        love.graphics.setColor(0.24, 0.52, 0.14, alpha)
+        love.graphics.line(cx - radius * 0.2, stemY, cx - radius * 1.1, stemY - size * 0.18)
+        love.graphics.line(cx + radius * 0.2, stemY, cx + radius * 0.9, stemY - size * 0.18)
+        love.graphics.setColor(0.86, 0.10, 0.16, alpha)
+        love.graphics.circle("fill", cx - radius * 0.95, cy + size * 0.05, radius)
+        love.graphics.circle("fill", cx + radius * 0.95, cy + size * 0.05, radius)
+        love.graphics.setColor(1, 0.78, 0.82, alpha * 0.45)
+        love.graphics.circle("fill", cx - radius * 1.2, cy - size * 0.02, radius * 0.28)
+        love.graphics.circle("fill", cx + radius * 0.7, cy - size * 0.02, radius * 0.28)
+        return
+    end
+
+    if symbol == "BELL" then
+        local bellW = size * 0.55
+        local bellH = size * 0.52
+        love.graphics.setColor(0.97, 0.78, 0.18, alpha)
+        love.graphics.arc("fill", "open", cx, cy + size * 0.02, bellW * 0.5, math.pi, math.pi * 2, 24)
+        love.graphics.rectangle("fill", cx - bellW * 0.48, cy, bellW * 0.96, bellH * 0.32, bellW * 0.10, bellW * 0.10)
+        love.graphics.setColor(0.83, 0.61, 0.10, alpha)
+        love.graphics.arc("line", "open", cx, cy + size * 0.02, bellW * 0.5, math.pi, math.pi * 2, 24)
+        love.graphics.line(cx - bellW * 0.5, cy + bellH * 0.18, cx + bellW * 0.5, cy + bellH * 0.18)
+        love.graphics.setColor(0.63, 0.42, 0.08, alpha)
+        love.graphics.circle("fill", cx, cy + bellH * 0.28, size * 0.07)
+        return
+    end
+
+    if symbol == "STAR" then
+        drawStarShape(cx, cy, size * 0.28, size * 0.12, alpha)
+        return
+    end
+
+    if symbol == "*" then
+        drawStarShape(cx, cy, size * 0.22, size * 0.10, alpha)
+        return
+    end
+
+    love.graphics.setFont(font)
+    love.graphics.setColor(0.84, 0.08, 0.12, alpha)
+    love.graphics.printf("7", cx - size * 0.25, cy - size * 0.36, size * 0.5, "center")
+end
+
+local function slotGlyph(symbol)
+    if symbol == "CHERRY" then return "C" end
+    if symbol == "BELL" then return "B" end
+    if symbol == "STAR" then return "*" end
+    if symbol == "*" then return "*" end
+    return "7"
 end
 
 function DayState:new(game)
@@ -114,12 +212,12 @@ function DayState:new(game)
         slotSpin = {
             active = false,
             elapsed = 0,
-            duration = 1.2,
-            reelInterval = 0.09,
-            nextRollAt = 0,
+            duration = 2.65,
             reels = { "CHERRY", "CHERRY", "CHERRY" },
             displayReels = { "CHERRY", "CHERRY", "CHERRY" },
-            reelStopTimes = { 0.60, 0.90, 1.20 },
+            reelStates = nil,
+            reelStartTimes = { 0.00, 0.10, 0.22 },
+            reelStopTimes = { 1.75, 2.15, 2.65 },
             pending = nil,
         },
         returnPlayer = nil,
@@ -203,6 +301,7 @@ function DayState:_exitCasino()
     self.casinoInterior.slotUIActive = false
     self.casinoInterior.slotSpin.active = false
     self.casinoInterior.slotSpin.pending = nil
+    self.casinoInterior.slotSpin.reelStates = nil
     self.casinoInterior.stakeAmount = 0
     self.game.tileManager:setProceduralSource(self.worldSeed)
     self.player.tx = returnPlayer.tx
@@ -432,10 +531,25 @@ function DayState:_startSlotSpin()
     local spin = self.casinoInterior.slotSpin
     spin.active = true
     spin.elapsed = 0
-    spin.nextRollAt = 0
     spin.pending = result
-    spin.reels = { "CHERRY", "BELL", "STAR" }
-    spin.displayReels = self.casino:rollSlotReels()
+    spin.duration = spin.reelStopTimes[#spin.reelStopTimes]
+
+    local startReels = copyArray(spin.reels)
+    spin.displayReels = copyArray(startReels)
+    spin.reelStates = {}
+
+    for i = 1, 3 do
+        local startIndex = SLOT_SYMBOL_INDEX[startReels[i]] or 1
+        local resultIndex = SLOT_SYMBOL_INDEX[result.reels[i]] or 1
+        local extraLoops = 15 + (i - 1) * 4
+        local targetPosition = startIndex + extraLoops * #SLOT_SYMBOLS + ((resultIndex - startIndex) % #SLOT_SYMBOLS)
+
+        spin.reelStates[i] = {
+            startPosition = startIndex - 1,
+            position = startIndex - 1,
+            targetPosition = targetPosition - 1,
+        }
+    end
 end
 
 function DayState:_openSlotMachineUI()
@@ -514,22 +628,32 @@ function DayState:_updateCasinoSpin(dt)
     end
 
     spin.elapsed = spin.elapsed + dt
-    if spin.elapsed >= spin.nextRollAt and spin.elapsed < spin.duration then
-        local nextReels = self.casino:rollSlotReels()
-        for i = 1, 3 do
-            if spin.elapsed < spin.reelStopTimes[i] then
-                spin.displayReels[i] = nextReels[i]
+
+    for i = 1, 3 do
+        local reelState = spin.reelStates and spin.reelStates[i]
+        if reelState then
+            local startTime = spin.reelStartTimes[i] or 0
+            local stopTime = spin.reelStopTimes[i] or spin.duration
+
+            if spin.elapsed <= startTime then
+                reelState.position = reelState.startPosition
+            elseif spin.elapsed >= stopTime then
+                reelState.position = reelState.targetPosition
             else
-                spin.displayReels[i] = spin.pending.reels[i]
+                local progress = clamp((spin.elapsed - startTime) / (stopTime - startTime), 0, 1)
+                local travel = easeOutCubic(progress ^ 0.72)
+                reelState.position = reelState.startPosition + (reelState.targetPosition - reelState.startPosition) * travel
             end
+
+            spin.displayReels[i] = getSlotSymbolAt(reelState.position + 0.5)
         end
-        spin.nextRollAt = spin.nextRollAt + spin.reelInterval
     end
 
     if spin.elapsed >= spin.duration then
         spin.active = false
-        spin.reels = spin.pending.reels
-        spin.displayReels = spin.pending.reels
+        spin.reels = copyArray(spin.pending.reels)
+        spin.displayReels = copyArray(spin.pending.reels)
+        spin.reelStates = nil
         local _, message = self.casino:resolveSlotSpin(spin.pending, self.inventory)
         spin.pending = nil
         self:_showNotice(message, 4.2)
@@ -1093,7 +1217,8 @@ function DayState:_drawSlotMachine()
     love.graphics.setColor(1, 0.95, 0.65, 1)
     love.graphics.rectangle("line", sx - 12, sy - 4, 24, 12, 4, 4)
     love.graphics.setFont(love.graphics.newFont(8))
-    love.graphics.printf(string.sub(spin.reels[1], 1, 1) .. string.sub(spin.reels[2], 1, 1) .. string.sub(spin.reels[3], 1, 1), sx - 12, sy - 2, 24, "center")
+    love.graphics.setColor(0.96, 0.94, 0.86, 1)
+    love.graphics.printf(slotGlyph(spin.displayReels[1]) .. " " .. slotGlyph(spin.displayReels[2]) .. " " .. slotGlyph(spin.displayReels[3]), sx - 12, sy - 2, 24, "center")
 
     if spin.active then
         love.graphics.setColor(0.95, 0.80, 0.22, alpha)
@@ -1364,7 +1489,7 @@ end
 function DayState:_drawCasinoOverlay()
     local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
     local spin = self.casinoInterior.slotSpin
-    local panelW, panelH = 560, 260
+    local panelW, panelH = 560, 362
     local panelX = (sw - panelW) * 0.5
     local panelY = 34
     local reelY = panelY + 64
@@ -1373,16 +1498,46 @@ function DayState:_drawCasinoOverlay()
     local reelGap = 24
     local firstReelX = panelX + 58
 
-    local function shortSymbol(symbol)
-        if symbol == "CHERRY" then return "CHERRY" end
-        if symbol == "BELL" then return "BELL" end
-        if symbol == "STAR" then return "STAR" end
-        return "7"
+    local function drawSymbolLabel(symbol, x, y, w, alpha, scale)
+        love.graphics.push()
+        love.graphics.translate(x + w * 0.5, y)
+        love.graphics.scale(scale, scale)
+        drawSlotSymbol(symbol, 0, 0, 52, alpha, self.slotFont)
+        love.graphics.pop()
     end
 
-    local function drawReel(x, y, currentSymbol, active, index)
-        local upperSymbols = { "CHERRY", "BELL", "STAR" }
-        local lowerSymbols = { "BELL", "STAR", "7" }
+    local function drawPaytableEntry(x, y, entry)
+        local iconBox = 42
+        local gap = 8
+        local startX = x + 16
+
+        love.graphics.setColor(1, 1, 1, 0.06)
+        love.graphics.rectangle("fill", x, y, 248, 34, 8, 8)
+        love.graphics.setColor(0.90, 0.72, 0.18, 0.35)
+        love.graphics.rectangle("line", x, y, 248, 34, 8, 8)
+
+        for i = 1, 3 do
+            local boxX = startX + (i - 1) * (iconBox + gap)
+            love.graphics.setColor(0.96, 0.94, 0.88, 0.95)
+            love.graphics.rectangle("fill", boxX, y + 4, iconBox, 26, 6, 6)
+            love.graphics.setColor(0.76, 0.58, 0.12, 0.9)
+            love.graphics.rectangle("line", boxX, y + 4, iconBox, 26, 6, 6)
+            drawSlotSymbol(entry.symbols[i], boxX + iconBox * 0.5, y + 17, 22, 1, self.smallFont)
+        end
+
+        love.graphics.setFont(self.smallFont)
+        love.graphics.setColor(1, 0.97, 0.88, 0.95)
+        love.graphics.printf(string.format("%dx", entry.multiplier), x + 166, y + 8, 66, "center")
+    end
+
+    local function drawReel(x, y, index)
+        local reelState = spin.reelStates and spin.reelStates[index]
+        local active = spin.active and spin.elapsed < spin.reelStopTimes[index]
+        local position = reelState and reelState.position or ((SLOT_SYMBOL_INDEX[spin.displayReels[index]] or 1) - 1)
+        local rowHeight = 42
+        local centerY = y + reelH * 0.5
+        local baseIndex = math.floor(position)
+        local offset = position - baseIndex
 
         love.graphics.setColor(0.88, 0.70, 0.20, 1)
         love.graphics.rectangle("fill", x - 8, y - 8, reelW + 16, reelH + 16, 12, 12)
@@ -1391,18 +1546,25 @@ function DayState:_drawCasinoOverlay()
         love.graphics.setColor(0.76, 0.58, 0.12, 1)
         love.graphics.rectangle("line", x, y, reelW, reelH, 10, 10)
 
-        love.graphics.setFont(self.smallFont)
-        love.graphics.setColor(0.45, 0.45, 0.45, active and 0.22 or 0.12)
-        love.graphics.printf(shortSymbol(upperSymbols[index]), x, y + 10, reelW, "center")
-        love.graphics.printf(shortSymbol(lowerSymbols[index]), x, y + 58, reelW, "center")
-
-        love.graphics.setFont(self.slotFont)
-        if currentSymbol == "7" then
-            love.graphics.setColor(0.84, 0.08, 0.12, 1)
-        else
-            love.graphics.setColor(0.16, 0.20, 0.24, 1)
+        love.graphics.setScissor(x, y, reelW, reelH)
+        for relativeIndex = -2, 2 do
+            local symbol = getSlotSymbolAt(baseIndex + relativeIndex)
+            local symbolY = centerY + (relativeIndex - offset) * rowHeight
+            local distance = math.abs(symbolY - centerY)
+            local alpha = active and clamp(1 - distance / (rowHeight * 2.6), 0.16, 0.92) or clamp(1 - distance / (rowHeight * 1.7), 0.10, 1.0)
+            local scale = active and (1.0 - math.min(distance / (rowHeight * 9), 0.08)) or 1.0
+            drawSymbolLabel(symbol, x, symbolY, reelW, alpha, scale)
         end
-        love.graphics.printf(shortSymbol(currentSymbol), x, y + 28, reelW, "center")
+        love.graphics.setScissor()
+
+        love.graphics.setColor(1, 1, 1, 0.22)
+        love.graphics.rectangle("line", x + 10, y + reelH * 0.5 - 20, reelW - 20, 40, 8, 8)
+
+        love.graphics.setColor(0.95, 0.95, 0.95, 0.10)
+        love.graphics.rectangle("fill", x + 2, y + 2, reelW - 4, 18, 8, 8)
+        love.graphics.setColor(0.10, 0.08, 0.05, active and 0.18 or 0.12)
+        love.graphics.rectangle("fill", x + 4, y, reelW - 8, 18)
+        love.graphics.rectangle("fill", x + 4, y + reelH - 18, reelW - 8, 18)
     end
 
     love.graphics.setColor(0, 0, 0, 0.76)
@@ -1415,13 +1577,7 @@ function DayState:_drawCasinoOverlay()
     love.graphics.printf("HOLDFAST SLOTS", panelX, panelY + 18, panelW, "center")
 
     for i = 1, 3 do
-        drawReel(
-            firstReelX + (i - 1) * (reelW + reelGap),
-            reelY,
-            spin.displayReels[i],
-            spin.active and spin.elapsed < spin.reelStopTimes[i],
-            i
-        )
+        drawReel(firstReelX + (i - 1) * (reelW + reelGap), reelY, i)
     end
 
     love.graphics.setFont(self.smallFont)
@@ -1432,6 +1588,19 @@ function DayState:_drawCasinoOverlay()
         love.graphics.printf("Stake:", panelX, panelY + 168, panelW, "center")
         love.graphics.printf(self:_formatSlotStake(), panelX + 24, panelY + 190, panelW - 48, "center")
         love.graphics.printf("LEFT / RIGHT: Adjust Gold Stake   G: Run Machine   ESC: Leave Machine", panelX, panelY + 222, panelW, "center")
+    end
+
+    love.graphics.setColor(0.98, 0.84, 0.22, 0.92)
+    love.graphics.printf("Paytable", panelX, panelY + 252, panelW, "center")
+
+    local paytableX = panelX + 22
+    local paytableY = panelY + 278
+    local columnGap = 268
+    local rowGap = 40
+    for i, entry in ipairs(SLOT_PAYTABLE) do
+        local column = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        drawPaytableEntry(paytableX + column * columnGap, paytableY + row * rowGap, entry)
     end
 end
 
