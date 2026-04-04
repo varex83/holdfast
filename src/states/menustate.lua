@@ -14,6 +14,11 @@ local MenuState = Class:extend()
 
 local PREVIEW_VISUAL_SCALE = 3.8
 
+local function pointInRect(px, py, rect)
+    return px >= rect.x and px <= rect.x + rect.w
+       and py >= rect.y and py <= rect.y + rect.h
+end
+
 function MenuState:new(game)
     self.game = game
     self.font = nil  -- Lazy loaded
@@ -56,6 +61,17 @@ function MenuState:exit()
     print("Exited Menu State")
 end
 
+function MenuState:ensureFonts()
+    if self.font then
+        return
+    end
+
+    self.titleFont = love.graphics.newFont(54)
+    self.font = love.graphics.newFont(28)
+    self.sectionFont = love.graphics.newFont(22)
+    self.smallFont = love.graphics.newFont(16)
+end
+
 function MenuState:update(dt)
     self.backgroundTime = self.backgroundTime + dt
     self.backgroundFocus.tx = self.backgroundFocus.tx + self.backgroundDrift.x * dt
@@ -65,16 +81,11 @@ function MenuState:update(dt)
     self.camera:follow(wx, wy)
     self.camera:update(dt)
     self.previewCharacter:updateVisuals(dt)
+    self:updateHoveredOption()
 end
 
 function MenuState:draw()
-    -- Lazy load fonts
-    if not self.font then
-        self.titleFont = love.graphics.newFont(54)
-        self.font = love.graphics.newFont(28)
-        self.sectionFont = love.graphics.newFont(22)
-        self.smallFont = love.graphics.newFont(16)
-    end
+    self:ensureFonts()
 
     self:drawBackground()
     self:drawAtmosphere()
@@ -114,7 +125,7 @@ function MenuState:draw()
                    input:getControlPrompt("enter", "a", "select") .. "  |  " ..
                    input:getControlPrompt("esc", "b", "quit")
     else
-        controls = "UP/DOWN: navigate  |  LEFT/RIGHT: class  |  ENTER: select  |  ESC: quit"
+        controls = "UP/DOWN: navigate  |  LEFT/RIGHT: class  |  ENTER: select  |  MOUSE: click  |  ESC: quit"
     end
     love.graphics.setColor(0.90, 0.91, 0.87, 0.95)
     love.graphics.print(controls, 20, love.graphics.getHeight() - 54)
@@ -219,19 +230,20 @@ function MenuState:drawMenuPanel()
 
     love.graphics.setFont(self.font)
     for i, option in ipairs(self.options) do
-        local y = startY + (i - 1) * rowH
+        local bounds = self:getMenuOptionBounds(i)
+        local y = bounds.textY
         local selected = i == self.selectedOption
 
         if selected then
             love.graphics.setColor(0.78, 0.72, 0.48, 0.95)
-            love.graphics.rectangle("fill", panelX + 22, y - 8, panelW - 44, 56, 16, 16)
+            love.graphics.rectangle("fill", bounds.x, bounds.y, bounds.w, bounds.h, 16, 16)
             love.graphics.setColor(0.10, 0.11, 0.12, 1)
             love.graphics.print(option, panelX + 48, y)
             love.graphics.setColor(0.10, 0.11, 0.12, 1)
             love.graphics.print(">", panelX + panelW - 56, y)
         else
             love.graphics.setColor(0.18, 0.20, 0.22, 0.78)
-            love.graphics.rectangle("fill", panelX + 22, y - 8, panelW - 44, 56, 16, 16)
+            love.graphics.rectangle("fill", bounds.x, bounds.y, bounds.w, bounds.h, 16, 16)
             love.graphics.setColor(0.86, 0.88, 0.90, 1)
             love.graphics.print(option, panelX + 48, y)
         end
@@ -345,6 +357,46 @@ function MenuState:changeClass(delta)
     self:updatePreviewCharacter()
 end
 
+function MenuState:getMenuOptionBounds(index)
+    self:ensureFonts()
+    local panel = self:getLayout().menu
+    local rowH = 68
+    local itemHeight = 56
+    local headerGap = 34
+    local totalHeight = self.sectionFont:getHeight() + headerGap + (#self.options * rowH - (rowH - itemHeight))
+    local startY = panel.y + (panel.h - totalHeight) * 0.5 + self.sectionFont:getHeight() + headerGap + 10
+    local textY = startY + (index - 1) * rowH
+
+    return {
+        x = panel.x + 22,
+        y = textY - 8,
+        w = panel.w - 44,
+        h = itemHeight,
+        textY = textY,
+    }
+end
+
+function MenuState:getMenuOptionAt(x, y)
+    for i = 1, #self.options do
+        if pointInRect(x, y, self:getMenuOptionBounds(i)) then
+            return i
+        end
+    end
+    return nil
+end
+
+function MenuState:updateHoveredOption()
+    if self.game.input:isUsingGamepad() then
+        return
+    end
+
+    local mx, my = love.mouse.getPosition()
+    local hovered = self:getMenuOptionAt(mx, my)
+    if hovered then
+        self.selectedOption = hovered
+    end
+end
+
 function MenuState:keypressed(key, scancode, isrepeat)
     if key == "up" then
         self.selectedOption = self.selectedOption - 1
@@ -364,6 +416,18 @@ function MenuState:keypressed(key, scancode, isrepeat)
         self:selectOption()
     elseif key == "escape" then
         love.event.quit()
+    end
+end
+
+function MenuState:mousepressed(x, y, button)
+    if button ~= 1 then
+        return
+    end
+
+    local clickedOption = self:getMenuOptionAt(x, y)
+    if clickedOption then
+        self.selectedOption = clickedOption
+        self:selectOption()
     end
 end
 

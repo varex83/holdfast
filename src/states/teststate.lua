@@ -29,7 +29,7 @@ end
 function TestState:enter(selectedClass)
     print("=== PHASE 2 TEST STATE ===")
     print("Controls:")
-    print("  WASD / Left Stick - Move")
+    print("  WASD / Arrow Keys / Left Stick - Move")
     print("  SPACE / Cross - Attack")
     print("  Q / Square - Use Ability")
     print("  SHIFT - Dash")

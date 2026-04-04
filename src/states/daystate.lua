@@ -15,6 +15,7 @@ local HarvestManager = require("src.resources.harvesting")
 local RespawnManager = require("src.resources.respawn")
 local Inventory      = require("src.inventory.inventory")
 local SupplyDepot    = require("src.inventory.supplydepot")
+local Casino         = require("src.world.casino")
 local BuildManager   = require("src.buildings.buildmanager")
 local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
@@ -83,11 +84,13 @@ function DayState:new(game)
     self.depot = SupplyDepot(2, 2, game.eventBus)
     self.depot:add("wood",  20)
     self.depot:add("stone", 10)
+    self.casino = Casino(-2, 2)
 
     self.buildings = BuildManager(game.eventBus)
     self.buildings:placeFree("basecore", 0, 0)
     self.ghost = BuildGhost()
     self.hud   = HUD()
+    self.notice = { text = "", alpha = 0, y = 52 }
 
     self.debugMode = false
     self._stickCooldown = 0
@@ -670,6 +673,13 @@ function DayState:_drawDepot()
     end
 end
 
+function DayState:_drawCasino()
+    self.casino:draw()
+    if self.casino:isNearby(self.player.tx, self.player.ty) then
+        self.casino:drawNearbyHint()
+    end
+end
+
 function DayState:_queueDepotDraw(entityDrawList)
     if self.fog:getState(self.depot.tx, self.depot.ty) == "hidden" then return end
     local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
@@ -677,6 +687,16 @@ function DayState:_queueDepotDraw(entityDrawList)
         sy    = depotSy,
         order = 40,
         draw  = function() self:_drawDepot() end
+    }
+end
+
+function DayState:_queueCasinoDraw(entityDrawList)
+    if self.fog:getState(self.casino.tx, self.casino.ty) == "hidden" then return end
+    local _, casinoSy = Iso.tileToScreen(self.casino.tx, self.casino.ty)
+    entityDrawList[#entityDrawList + 1] = {
+        sy    = casinoSy,
+        order = 41,
+        draw  = function() self:_drawCasino() end
     }
 end
 
@@ -710,6 +730,7 @@ function DayState:draw()
     self:_queueVisibleBuildingDraws(entityDrawList)
     self:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
     self:_queueDepotDraw(entityDrawList)
+    self:_queueCasinoDraw(entityDrawList)
     self:_queuePlayerDraw(entityDrawList)
     self:_sortAndDrawEntities(entityDrawList)
 
@@ -722,6 +743,7 @@ function DayState:draw()
     self.camera:clear()
 
     self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost)
+    self:_drawNotice()
 
     if self.debugMode then self:drawDebugUI() end
 
@@ -842,6 +864,28 @@ function DayState:_countLoadedChunks()
     return count
 end
 
+function DayState:_showNotice(text)
+    self.notice.text = text
+    self.notice.alpha = 0
+    self.notice.y = 36
+    self.game.tweens:stop(self.notice)
+    self.game.tweens:to(self.notice, 0.18, { alpha = 1, y = 52 }):ease("quadout"):oncomplete(function()
+        self.game.tweens:to(self.notice, 0.35, { alpha = 0, y = 58 }):delay(1.0)
+    end)
+end
+
+function DayState:_drawNotice()
+    if self.notice.alpha <= 0.01 or self.notice.text == "" then
+        return
+    end
+
+    love.graphics.setFont(self.smallFont)
+    love.graphics.setColor(0, 0, 0, 0.70 * self.notice.alpha)
+    love.graphics.rectangle("fill", love.graphics.getWidth() * 0.5 - 220, self.notice.y - 8, 440, 38, 8, 8)
+    love.graphics.setColor(1, 0.97, 0.88, self.notice.alpha)
+    love.graphics.printf(self.notice.text, 0, self.notice.y, love.graphics.getWidth(), "center")
+end
+
 function DayState:_keypressedBuild(key)
     if key == "b" then
         if self.ghost:isActive() then self.ghost:cycleType()
@@ -869,6 +913,11 @@ function DayState:_keypressedAction(key)
     elseif key == "f" then
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
+        end
+    elseif key == "g" then
+        if self.casino:isNearby(self.player.tx, self.player.ty) then
+            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
+            self:_showNotice(message)
         end
     end
 end
