@@ -16,6 +16,12 @@ function HarvestManager:new(eventBus)
     self._active   = nil   -- { node, progress, duration }
 end
 
+function HarvestManager:canStart(inventory)
+    if self._active then return false end
+    if inventory and inventory:isFull() then return false end
+    return true
+end
+
 -- Returns the nearest ready node within INTERACT_RADIUS of (ptx, pty),
 -- or nil if none.
 function HarvestManager:nearestNode(ptx, pty, nodeManager)
@@ -37,8 +43,7 @@ end
 -- Call when player presses E. Starts harvesting the nearest eligible node.
 -- Returns true if a harvest was started.
 function HarvestManager:tryStart(ptx, pty, nodeManager, inventory)
-    if self._active then return false end  -- already harvesting
-    if inventory and inventory:isFull() then return false end
+    if not self:canStart(inventory) then return false end
     local node = self:nearestNode(ptx, pty, nodeManager)
     if not node then return false end
 
@@ -122,6 +127,7 @@ end
 
 -- Draw a highlight ring around the nearest harvestable node (only if visible).
 function HarvestManager:drawHint(ptx, pty, nodeManager, fog)
+    if not self:canStart(nil) then return end
     local node = self:nearestNode(ptx, pty, nodeManager)
     if not node then return end
     if fog and not fog:isVisible(node.tx, node.ty) then return end

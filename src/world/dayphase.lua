@@ -116,7 +116,7 @@ function DayPhase:keypressed(key, worldState)
     if key == "r" or key == "a" then
         if self.buildGhost and self.buildGhost:isActive() and self.buildManager and self.depot then
             local tx, ty = worldState:_ghostTile()
-            self.buildManager:place(self.buildGhost:currentType(), tx, ty, self.depot)
+            self.buildManager:place(self.buildGhost:currentType(), tx, ty, self.depot, worldState.inventory)
         end
         return
     end

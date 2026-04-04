@@ -11,14 +11,15 @@ function InputManager.new()
 
     -- Input action mappings
     self.keyboardMap = {
-        move_up = "w",
-        move_down = "s",
-        move_left = "a",
-        move_right = "d",
+        move_up = { "w", "up" },
+        move_down = { "s", "down" },
+        move_left = { "a", "left" },
+        move_right = { "d", "right" },
         confirm = "return",
         cancel = "escape",
         interact = "e",
-        ability = "space",
+        ability = "q",
+        ability2 = "lshift",
         menu_up = "up",
         menu_down = "down",
     }
@@ -54,6 +55,53 @@ function InputManager.new()
     self:refreshJoysticks()
 
     return self
+end
+
+function InputManager:_getKeyboardBindings(action)
+    local binding = self.keyboardMap[action]
+    if binding == nil then
+        return nil
+    end
+
+    if type(binding) == "table" then
+        return binding
+    end
+
+    return { binding }
+end
+
+function InputManager:_isKeyboardActionDown(action)
+    local bindings = self:_getKeyboardBindings(action)
+    if not bindings then
+        return false
+    end
+
+    for _, key in ipairs(bindings) do
+        if love.keyboard.isDown(key) then
+            return true
+        end
+    end
+
+    return false
+end
+
+function InputManager:_doesKeyboardKeyMatch(action, key)
+    if not key then
+        return false
+    end
+
+    local bindings = self:_getKeyboardBindings(action)
+    if not bindings then
+        return false
+    end
+
+    for _, binding in ipairs(bindings) do
+        if binding == key then
+            return true
+        end
+    end
+
+    return false
 end
 
 function InputManager:refreshJoysticks()
@@ -116,10 +164,10 @@ function InputManager:getMoveVector()
     local dx, dy = 0, 0
 
     -- Keyboard input
-    if love.keyboard.isDown(self.keyboardMap.move_right) then dx = dx + 1 end
-    if love.keyboard.isDown(self.keyboardMap.move_left) then dx = dx - 1 end
-    if love.keyboard.isDown(self.keyboardMap.move_down) then dy = dy + 1 end
-    if love.keyboard.isDown(self.keyboardMap.move_up) then dy = dy - 1 end
+    if self:_isKeyboardActionDown("move_right") then dx = dx + 1 end
+    if self:_isKeyboardActionDown("move_left") then dx = dx - 1 end
+    if self:_isKeyboardActionDown("move_down") then dy = dy + 1 end
+    if self:_isKeyboardActionDown("move_up") then dy = dy - 1 end
 
     if dx ~= 0 or dy ~= 0 then
         self.lastInputDevice = "keyboard"
@@ -147,8 +195,7 @@ end
 
 function InputManager:isActionPressed(action)
     -- Check keyboard
-    local keyboardKey = self.keyboardMap[action]
-    if keyboardKey and love.keyboard.isDown(keyboardKey) then
+    if self:_isKeyboardActionDown(action) then
         return true
     end
 
@@ -176,8 +223,7 @@ end
 
 function InputManager:isActionJustPressed(action, key, joystickButton)
     -- Check if this key/button press matches the action
-    local keyboardKey = self.keyboardMap[action]
-    if key and keyboardKey == key then
+    if self:_doesKeyboardKeyMatch(action, key) then
         return true
     end
 
@@ -280,13 +326,17 @@ function InputManager:getPrompt(action)
             return "Right Stick"
         end
     else
-        local key = self.keyboardMap[action]
-        if key then
-            return key:upper()
+        local bindings = self:_getKeyboardBindings(action)
+        if bindings then
+            local labels = {}
+            for _, key in ipairs(bindings) do
+                table.insert(labels, key:upper())
+            end
+            return table.concat(labels, "/")
         end
         -- Special cases
         if action == "move" then
-            return "WASD"
+            return "WASD/ARROWS"
         elseif action == "camera" then
             return "Mouse Wheel"
         end

@@ -22,14 +22,17 @@ local TestState = Class:extend()
 function TestState:new(game)
     self.game = game
     self.name = "test"
+    self.dash = { active = false, remaining = 0, speed = 900, dirX = 0, dirY = 0, cooldown = 0, cooldownTime = 0.7 }
+    self.abilityDash = { active = false, remaining = 0, speed = 520, dirX = 0, dirY = 0, duration = 0.5 }
 end
 
 function TestState:enter(selectedClass)
     print("=== PHASE 2 TEST STATE ===")
     print("Controls:")
-    print("  WASD / Left Stick - Move")
+    print("  WASD / Arrow Keys / Left Stick - Move")
     print("  SPACE / Cross - Attack")
-    print("  E / Square - Use Ability")
+    print("  Q / Square - Use Ability")
+    print("  SHIFT - Dash")
     print("  1-4 - Switch Class")
     print("  T - Spawn Shambler")
     print("  F3 - Toggle Debug")
@@ -95,52 +98,46 @@ function TestState:getClassLabel(classType)
     return classDef and classDef.label or "Warrior"
 end
 
-function TestState:update(dt)
-    if love.keyboard.wasPressed("f3") then
-        self.debugMode = not self.debugMode
+function TestState:_updateInput()
+    if love.keyboard.wasPressed("f3") then self.debugMode = not self.debugMode end
+    if love.keyboard.wasPressed("1") then self:switchClass(Constants.CLASS.WARRIOR)
+    elseif love.keyboard.wasPressed("2") then self:switchClass(Constants.CLASS.ARCHER)
+    elseif love.keyboard.wasPressed("3") then self:switchClass(Constants.CLASS.ENGINEER)
+    elseif love.keyboard.wasPressed("4") then self:switchClass(Constants.CLASS.SCOUT)
     end
+    if love.keyboard.wasPressed("t")     then self:spawnTestEnemy() end
+    if love.keyboard.wasPressed("space") then self:playerAttack() end
+    if love.keyboard.wasPressed("q")     then self:playerAbility() end
+    if love.keyboard.wasPressed("lshift") or love.keyboard.wasPressed("rshift") then
+        self:playerDash()
+    end
+end
 
+function TestState:_updatePlayer(dt)
+    self.player:update(dt)
+    if self.player.classType == Constants.CLASS.SCOUT then
+        Cloak.update(self.player, dt)
+    end
+    if self.player.cooldowns then self.player.cooldowns:update(dt) end
+end
+
+function TestState:update(dt)
+    if self.dash.cooldown > 0 then
+        self.dash.cooldown = math.max(0, self.dash.cooldown - dt)
+    end
     if love.keyboard.wasPressed("escape") then
         self.game.stateMachine:setState("menu")
         return
     end
 
-    if love.keyboard.wasPressed("1") then
-        self:switchClass(Constants.CLASS.WARRIOR)
-    elseif love.keyboard.wasPressed("2") then
-        self:switchClass(Constants.CLASS.ARCHER)
-    elseif love.keyboard.wasPressed("3") then
-        self:switchClass(Constants.CLASS.ENGINEER)
-    elseif love.keyboard.wasPressed("4") then
-        self:switchClass(Constants.CLASS.SCOUT)
-    end
-
-    if love.keyboard.wasPressed("t") then
-        self:spawnTestEnemy()
-    end
-
-    if love.keyboard.wasPressed("space") then
-        self:playerAttack()
-    end
-
-    if love.keyboard.wasPressed("e") then
-        self:playerAbility()
-    end
-
-    self.player:update(dt)
-    if self.player.classType == Constants.CLASS.SCOUT then
-        Cloak.update(self.player, dt)
-    end
-    if self.player.cooldowns then
-        self.player.cooldowns:update(dt)
-    end
+    self:_updateInput()
+    if self.abilityDash.active then self:updateAbilityDash(dt) end
+    if self.dash.active         then self:updateDash(dt) end
+    self:_updatePlayer(dt)
 
     local neighbors = self:getEnemyCharacters()
     for _, enemy in ipairs(self.enemies) do
-        enemy:update(dt, {
-            neighbors = neighbors,
-            player = self.player,
-        })
+        enemy:update(dt, { neighbors = neighbors, player = self.player })
     end
 
     self.combatManager:update(dt)
@@ -246,7 +243,9 @@ function TestState:drawUI()
     y = love.graphics.getHeight() - 130
     love.graphics.print("SPACE/Cross - Attack", padding + 10, y)
     y = y + 20
-    love.graphics.print("E/Square - Ability", padding + 10, y)
+    love.graphics.print("Q/Square - Ability", padding + 10, y)
+    y = y + 20
+    love.graphics.print("SHIFT - Dash", padding + 10, y)
     y = y + 20
     love.graphics.print("T - Spawn Shambler", padding + 10, y)
     y = y + 20
@@ -503,33 +502,148 @@ function TestState:playerAttack()
     end
 end
 
+function TestState:playerDash()
+    if self.dash.active then return end
+    if self.abilityDash.active then return end
+    if self.dash.cooldown > 0 then return end
+    local dashDistance = 60
+    local facingDir = self.player.facingDirection
+    local dx = math.cos(facingDir)
+    local dy = math.sin(facingDir)
+    self.dash.active = true
+    self.dash.remaining = dashDistance
+    self.dash.dirX = dx
+    self.dash.dirY = dy
+    self.dash.cooldown = self.dash.cooldownTime
+end
+
+function TestState:updateDash(dt)
+    local step = math.min(self.dash.remaining, self.dash.speed * dt)
+    if step <= 0 then
+        self.dash.active = false
+        return
+    end
+
+    local dx = self.dash.dirX * step
+    local dy = self.dash.dirY * step
+    local newX = self.player.position.x + dx
+    local newY = self.player.position.y + dy
+
+    if self.player:canMoveTo(newX, newY) then
+        self.player:setPosition(newX, newY)
+    else
+        local moved = false
+        if self.player:canMoveTo(newX, self.player.position.y) then
+            self.player:setPosition(newX, self.player.position.y)
+            moved = true
+        end
+        if self.player:canMoveTo(self.player.position.x, newY) then
+            self.player:setPosition(self.player.position.x, newY)
+            moved = true
+        end
+        if not moved then
+            self.dash.active = false
+            return
+        end
+    end
+
+    self.dash.remaining = self.dash.remaining - step
+    if self.dash.remaining <= 0 then
+        self.dash.active = false
+    end
+end
+
+function TestState:startAbilityDash(dirX, dirY)
+    if self.abilityDash.active then return end
+    if self.dash.active then return end
+    self.abilityDash.active = true
+    self.abilityDash.remaining = self.abilityDash.duration
+    self.abilityDash.dirX = dirX
+    self.abilityDash.dirY = dirY
+end
+
+function TestState:updateAbilityDash(dt)
+    local stepTime = math.min(self.abilityDash.remaining, dt)
+    if stepTime <= 0 then
+        self.abilityDash.active = false
+        return
+    end
+
+    local step = self.abilityDash.speed * stepTime
+    local dx = self.abilityDash.dirX * step
+    local dy = self.abilityDash.dirY * step
+    local newX = self.player.position.x + dx
+    local newY = self.player.position.y + dy
+
+    if self.player:canMoveTo(newX, newY) then
+        self.player:setPosition(newX, newY)
+    else
+        local moved = false
+        if self.player:canMoveTo(newX, self.player.position.y) then
+            self.player:setPosition(newX, self.player.position.y)
+            moved = true
+        end
+        if self.player:canMoveTo(self.player.position.x, newY) then
+            self.player:setPosition(self.player.position.x, newY)
+            moved = true
+        end
+        if not moved then
+            self.abilityDash.active = false
+            return
+        end
+    end
+
+    self.abilityDash.remaining = self.abilityDash.remaining - stepTime
+    if self.abilityDash.remaining <= 0 then
+        self.abilityDash.active = false
+    end
+end
+
 function TestState:playerAbility()
     local classType = self.player.classType
+    if classType == Constants.CLASS.ARCHER then
+        local facingDir = self.player.facingDirection
+        Projectile.createVolley(
+            self.world,
+            self.player.position.x,
+            self.player.position.y,
+            facingDir,
+            self.player.entity,
+            "player",
+            5
+        )
+        self:showNotice("Volley")
+    elseif classType == Constants.CLASS.WARRIOR then
+        local facingDir = self.player.facingDirection
+        local dirX = math.cos(facingDir)
+        local dirY = math.sin(facingDir)
+        local range = self.player.stats:getAttackRange() * 1.8
+        local offsetX = dirX * range / 2
+        local offsetY = dirY * range / 2
 
-    if classType == Constants.CLASS.ARCHER and self.player.cooldowns then
-        local ok = self.player.cooldowns:activate("volley", {
-            actor = self.player,
-            world = self.world,
+        local attackId = self.combatManager:registerAttack(self.player.entity, {
+            range = range,
+            damage = self.player.stats:getAttack() * 1.6,
+            cooldown = 2.0,
+            hitboxOffset = {x = offsetX, y = offsetY},
+            hitboxSize = {width = range, height = range * 0.35},
+            duration = 0.35,
+            knockback = 140,
+            hitLimit = 10,
         })
-        if ok then
-            self:showNotice("Volley")
+
+        if attackId then
+            self.player:triggerAttackAnimation()
+            self:pulseCameraZoom()
+            self:startAbilityDash(dirX, dirY)
+            self:showNotice("Lunge Stab")
+        else
+            local cd = self.combatManager:getAttackCooldown(self.player.entity)
+            self:showNotice(string.format("Ability CD %.1fs", cd))
         end
-    elseif classType == Constants.CLASS.WARRIOR and self.player.cooldowns then
-        local ok = self.player.cooldowns:activate("shield_bash", {
-            actor = self.player,
-            world = self.world,
-            combatManager = self.combatManager,
-        })
-        if ok then
-            self:showNotice("Shield Bash")
-        end
-    elseif classType == Constants.CLASS.SCOUT and self.player.cooldowns then
-        local ok = self.player.cooldowns:activate("cloak", {
-            actor = self.player,
-        })
-        if ok then
-            self:showNotice("Scout Cloak")
-        end
+    elseif classType == Constants.CLASS.SCOUT then
+        self.player.health:setInvulnerable(3.0)
+        self:showNotice("Scout Cloak")
     elseif classType == Constants.CLASS.ENGINEER then
         self.player:heal(20)
         self:showNotice("Engineer Repair Burst")

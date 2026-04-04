@@ -1,9 +1,9 @@
 -- HUD
 -- Draws the in-game heads-up display:
---   • Day counter + countdown timer
---   • Player inventory (items + weight bar)
---   • Supply depot indicator when nearby
---   • Control hints
+--   вЂў Day counter + countdown timer
+--   вЂў Player inventory (items + weight bar)
+--   вЂў Supply depot indicator when nearby
+--   вЂў Control hints
 
 local Class     = require("lib.class")
 local Resources = require("data.resources")
@@ -20,28 +20,31 @@ function HUD:new()
     self._fontLg = love.graphics.newFont(22)
     self._fontMd = love.graphics.newFont(14)
     self._fontSm = love.graphics.newFont(11)
+    self._fontHint = love.graphics.newFont(15)
+    self._fontHintKey = love.graphics.newFont(13)
 end
 
--- ─── Public draw entry point ─────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Public draw entry point в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-function HUD:draw(game, inventory, depot, player, ghost)
+function HUD:draw(game, inventory, depot, player, ghost, context)
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()
+    local inCasino = context and context.inCasino
 
     self:_drawTopBar(game, sw)
     self:_drawInventory(inventory, sh)
-    if depot and depot:isNearby(player.tx, player.ty) then
+    if not inCasino and depot and depot:isNearby(player.tx, player.ty) then
         self:_drawDepotStock(depot, sw)
     end
-    if ghost and ghost:isActive() then
+    if not inCasino and ghost and ghost:isActive() then
         self:_drawBuildMode(ghost, sw, sh)
     end
-    self:_drawControls(game.input, sh, sw, ghost)
+    self:_drawControls(game.input, sh, sw, ghost, context)
 
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- ─── Top bar: day + timer ────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Top bar: day + timer в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawTopBar(game, sw)
     love.graphics.setFont(self._fontLg)
@@ -58,7 +61,7 @@ function HUD:_drawTopBar(game, sw)
     love.graphics.print(timeStr, sw - tw - PAD, PAD + 4)
 end
 
--- ─── Inventory panel (bottom-left) ───────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Inventory panel (bottom-left) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawInventory(inventory, sh)
     if not inventory then return end
@@ -106,7 +109,7 @@ function HUD:_drawInventory(inventory, sh)
     end
 end
 
--- ─── Depot stock panel (right side, shown when nearby) ───────────────────────
+-- в”Ђв”Ђв”Ђ Depot stock panel (right side, shown when nearby) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawDepotStock(depot, sw)
     local stock = depot.getSortedItems and depot:getSortedItems() or {}
@@ -144,7 +147,7 @@ function HUD:_drawDepotStock(depot, sw)
     end
 end
 
--- ─── Build mode banner ───────────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Build mode banner в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawBuildMode(ghost, sw, sh)
     local Buildings = require("data.buildings")
@@ -174,23 +177,110 @@ function HUD:_drawBuildMode(ghost, sw, sh)
     love.graphics.print(text, (sw - tw) * 0.5, sh - 50)
 end
 
--- ─── Control hints (bottom) ──────────────────────────────────────────────────
+-- в”Ђв”Ђв”Ђ Control hints (bottom) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-function HUD:_drawControls(input, sh, sw, ghost)
-    if ghost and ghost:isActive() then return end  -- banner replaces hints in build mode
+function HUD:_drawHintChip(x, y, keyText, descText)
+    local keyPadX = 8
+    local chipH = 28
 
-    love.graphics.setFont(self._fontSm)
-    love.graphics.setColor(1, 1, 1, 0.75)
+    love.graphics.setFont(self._fontHintKey)
+    local keyW = self._fontHintKey:getWidth(keyText) + keyPadX * 2
+    love.graphics.setColor(0.94, 0.88, 0.62, 0.95)
+    love.graphics.rectangle("fill", x, y, keyW, chipH, 8, 8)
+    love.graphics.setColor(0.10, 0.11, 0.12, 1)
+    love.graphics.printf(keyText, x, y + 6, keyW, "center")
 
-    local hints
-    if input and input:isUsingGamepad() then
-        hints = "Left Stick: move  |  X: harvest  |  RB: build  |  △: skip night  |  ○: menu  |  □: deposit"
+    love.graphics.setFont(self._fontHint)
+    love.graphics.setColor(0.94, 0.96, 0.98, 0.96)
+    love.graphics.print(descText, x + keyW + 8, y + 5)
+
+    return keyW + 8 + self._fontHint:getWidth(descText)
+end
+
+function HUD:_drawHintRow(x, y, items)
+    local cursorX = x
+    for i, item in ipairs(items) do
+        cursorX = cursorX + self:_drawHintChip(cursorX, y, item.key, item.label)
+        if i < #items then
+            cursorX = cursorX + 18
+        end
+    end
+end
+
+function HUD:_drawControls(input, sh, sw, ghost, context)
+    if ghost and ghost:isActive() and not (context and context.inCasino) then return end  -- banner replaces hints in build mode
+
+    local rows
+    local panelW = math.min(sw - 32, 880)
+    local panelH = 88
+    local panelX = (sw - panelW) * 0.5
+    local panelY = sh - panelH - 14
+
+    if context and context.inCasino and input and input:isUsingGamepad() then
+        rows = {
+            {
+                { key = "L STICK", label = "Move" },
+                { key = "A", label = "Gamble" },
+                { key = "B", label = "Leave" },
+            },
+            {
+                { key = "TABLE", label = "Use nearby" },
+            }
+        }
+    elseif context and context.inCasino then
+        rows = {
+            {
+                { key = "WASD / ARROWS", label = "Move" },
+                { key = "G", label = "Gamble" },
+                { key = "ESC", label = "Leave" },
+            },
+            {
+                { key = "TABLE", label = "Use nearby" },
+            }
+        }
+    elseif input and input:isUsingGamepad() then
+        rows = {
+            {
+                { key = "L STICK", label = "Move" },
+                { key = "A", label = "Attack" },
+                { key = "Y", label = "Ability" },
+                { key = "X", label = "Harvest" },
+            },
+            {
+                { key = "RB", label = "Build" },
+                { key = "LB", label = "Deposit" },
+                { key = "B", label = "Menu" },
+            }
+        }
     else
-        hints = "WASD: move  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
+        rows = {
+            {
+                { key = "WASD / ARROWS", label = "Move" },
+                { key = "SPACE", label = "Attack" },
+                { key = "Q", label = "Ability" },
+                { key = "SHIFT", label = "Dash" },
+            },
+            {
+                { key = "E", label = "Harvest" },
+                { key = "B", label = "Build" },
+                { key = "F", label = "Deposit" },
+                { key = "G", label = "Enter Casino" },
+                { key = "ESC", label = "Menu" },
+            }
+        }
     end
 
-    local tw = self._fontSm:getWidth(hints)
-    love.graphics.print(hints, (sw - tw) * 0.5, sh - 20)
+    love.graphics.setColor(0.03, 0.04, 0.05, 0.82)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH, 14, 14)
+    love.graphics.setColor(0.78, 0.72, 0.48, 0.92)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH, 14, 14)
+
+    love.graphics.setFont(self._fontSm)
+    love.graphics.setColor(0.92, 0.94, 0.95, 0.9)
+    love.graphics.print("CONTROLS", panelX + 14, panelY + 8)
+
+    self:_drawHintRow(panelX + 14, panelY + 28, rows[1])
+    self:_drawHintRow(panelX + 14, panelY + 56, rows[2])
 end
 
 return HUD
