@@ -92,7 +92,14 @@ function BuildGhost:_drawLabels(def, sx, sy, occupied, affordable)
     love.graphics.print(def.name .. reason, sx - 36, sy - 22)
 
     local costParts = {}
-    for rtype, amt in pairs(def.cost) do
+    local resourceTypes = {}
+    for rtype in pairs(def.cost) do
+        resourceTypes[#resourceTypes + 1] = rtype
+    end
+    table.sort(resourceTypes)
+
+    for _, rtype in ipairs(resourceTypes) do
+        local amt = def.cost[rtype]
         costParts[#costParts + 1] = amt .. " " .. rtype
     end
     love.graphics.setColor(0.8, 0.8, 0.3, 0.85)

@@ -432,8 +432,6 @@ function MenuState:mousepressed(x, y, button)
 end
 
 function MenuState:gamepadPressed(joystick, button)
-    print("MenuState: gamepad button pressed: " .. button)  -- Debug output
-
     if button == "dpup" then
         self.selectedOption = self.selectedOption - 1
         if self.selectedOption < 1 then
@@ -449,7 +447,6 @@ function MenuState:gamepadPressed(joystick, button)
     elseif button == "dpright" then
         self:changeClass(1)
     elseif button == "a" then  -- X button on DualSense (Cross)
-        print("Selecting option: " .. self.selectedOption)
         self:selectOption()
     elseif button == "b" then  -- Circle button on DualSense
         love.event.quit()
@@ -465,7 +462,7 @@ function MenuState:selectOption()
         self.game.stateMachine:setState("asset_manager")
     elseif self.selectedOption == 3 then
         -- New Game
-        self.game.stateMachine:setState("day", selectedClass)
+        self.game.stateMachine:setState("world", selectedClass)
     elseif self.selectedOption == 4 then
         -- Load Game (not implemented yet)
         print("Load Game not implemented yet")

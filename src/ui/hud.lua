@@ -66,9 +66,8 @@ end
 function HUD:_drawInventory(inventory, sh)
     if not inventory then return end
 
-    local items = inventory:getItems()
-    local count = 0
-    for _ in pairs(items) do count = count + 1 end
+    local items = inventory.getSortedItems and inventory:getSortedItems() or {}
+    local count = #items
 
     -- Background panel
     local panelH = ROW * (count + 2) + BAR_H + PAD * 2
@@ -95,7 +94,9 @@ function HUD:_drawInventory(inventory, sh)
     -- Item rows
     local y = panelY + BAR_H + ROW + 2
     love.graphics.setFont(self._fontMd)
-    for rtype, amt in pairs(items) do
+    for _, entry in ipairs(items) do
+        local rtype = entry.resourceType
+        local amt = entry.amount
         local def = Resources[rtype]
         local c   = def and def.color or {1, 1, 1}
         -- Colour dot
@@ -111,9 +112,8 @@ end
 -- в”Ђв”Ђв”Ђ Depot stock panel (right side, shown when nearby) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 function HUD:_drawDepotStock(depot, sw)
-    local stock = depot:getStock()
-    local count = 0
-    for _ in pairs(stock) do count = count + 1 end
+    local stock = depot.getSortedItems and depot:getSortedItems() or {}
+    local count = #stock
     if count == 0 then count = 1 end  -- show "empty" row
 
     local panelW = 160
@@ -130,10 +130,12 @@ function HUD:_drawDepotStock(depot, sw)
 
     local y = py + ROW + 4
     love.graphics.setColor(1, 1, 1, 0.9)
-    if count == 1 and next(stock) == nil then
+    if #stock == 0 then
         love.graphics.print("(empty)", px, y)
     else
-        for rtype, amt in pairs(stock) do
+        for _, entry in ipairs(stock) do
+            local rtype = entry.resourceType
+            local amt = entry.amount
             local def = Resources[rtype]
             local c   = def and def.color or {1, 1, 1}
             love.graphics.setColor(c[1], c[2], c[3], 1)
@@ -153,7 +155,14 @@ function HUD:_drawBuildMode(ghost, sw, sh)
     local def   = Buildings[btype]
 
     local costParts = {}
-    for rtype, amt in pairs(def.cost) do
+    local resourceTypes = {}
+    for rtype in pairs(def.cost) do
+        resourceTypes[#resourceTypes + 1] = rtype
+    end
+    table.sort(resourceTypes)
+
+    for _, rtype in ipairs(resourceTypes) do
+        local amt = def.cost[rtype]
         costParts[#costParts + 1] = amt .. " " .. rtype
     end
     local costStr = #costParts > 0 and table.concat(costParts, ", ") or "free"

@@ -50,10 +50,12 @@ dev: check-love
 ## test: Run test suite
 test:
 	@echo "$(GREEN)Running tests...$(NC)"
-	@if [ -d "tests" ] && [ -n "$$(ls -A tests/*.lua 2>/dev/null)" ]; then \
+	@if [ -f "tests/run.lua" ] && command -v lua >/dev/null 2>&1; then \
+		lua tests/run.lua; \
+	elif [ -d "tests" ] && [ -n "$$(ls -A tests/*.lua 2>/dev/null)" ] && { command -v $(LOVE_BIN) >/dev/null 2>&1 || [ -f "$(LOVE_BIN)" ]; }; then \
 		$(LOVE_BIN) tests/; \
 	else \
-		echo "$(YELLOW)No tests found in tests/ directory$(NC)"; \
+		echo "$(YELLOW)No runnable test setup found$(NC)"; \
 	fi
 
 ## lint: Lint Lua code with luacheck
