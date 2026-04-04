@@ -26,19 +26,20 @@ end
 
 -- в”Ђв”Ђв”Ђ Public draw entry point в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
-function HUD:draw(game, inventory, depot, player, ghost)
+function HUD:draw(game, inventory, depot, player, ghost, context)
     local sw = love.graphics.getWidth()
     local sh = love.graphics.getHeight()
+    local inCasino = context and context.inCasino
 
     self:_drawTopBar(game, sw)
     self:_drawInventory(inventory, sh)
-    if depot and depot:isNearby(player.tx, player.ty) then
+    if not inCasino and depot and depot:isNearby(player.tx, player.ty) then
         self:_drawDepotStock(depot, sw)
     end
-    if ghost and ghost:isActive() then
+    if not inCasino and ghost and ghost:isActive() then
         self:_drawBuildMode(ghost, sw, sh)
     end
-    self:_drawControls(game.input, sh, sw, ghost)
+    self:_drawControls(game.input, sh, sw, ghost, context)
 
     love.graphics.setColor(1, 1, 1, 1)
 end
@@ -197,8 +198,8 @@ function HUD:_drawHintRow(x, y, items)
     end
 end
 
-function HUD:_drawControls(input, sh, sw, ghost)
-    if ghost and ghost:isActive() then return end  -- banner replaces hints in build mode
+function HUD:_drawControls(input, sh, sw, ghost, context)
+    if ghost and ghost:isActive() and not (context and context.inCasino) then return end  -- banner replaces hints in build mode
 
     local rows
     local panelW = math.min(sw - 32, 880)
@@ -206,7 +207,29 @@ function HUD:_drawControls(input, sh, sw, ghost)
     local panelX = (sw - panelW) * 0.5
     local panelY = sh - panelH - 14
 
-    if input and input:isUsingGamepad() then
+    if context and context.inCasino and input and input:isUsingGamepad() then
+        rows = {
+            {
+                { key = "L STICK", label = "Move" },
+                { key = "A", label = "Gamble" },
+                { key = "B", label = "Leave" },
+            },
+            {
+                { key = "TABLE", label = "Use nearby" },
+            }
+        }
+    elseif context and context.inCasino then
+        rows = {
+            {
+                { key = "WASD / ARROWS", label = "Move" },
+                { key = "G", label = "Gamble" },
+                { key = "ESC", label = "Leave" },
+            },
+            {
+                { key = "TABLE", label = "Use nearby" },
+            }
+        }
+    elseif input and input:isUsingGamepad() then
         rows = {
             {
                 { key = "L STICK", label = "Move" },
@@ -232,7 +255,7 @@ function HUD:_drawControls(input, sh, sw, ghost)
                 { key = "E", label = "Harvest" },
                 { key = "B", label = "Build" },
                 { key = "F", label = "Deposit" },
-                { key = "G", label = "Gamble" },
+                { key = "G", label = "Enter Casino" },
                 { key = "ESC", label = "Menu" },
             }
         }

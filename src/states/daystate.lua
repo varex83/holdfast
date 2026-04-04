@@ -39,6 +39,18 @@ end
 -- Convert stick/screen direction to iso tile direction.
 -- Uses the same matrix as player movement: dtx = sx/hw + sy/hh, dty = sy/hh - sx/hw.
 local ARROW_CURSOR = { up={-1,-1}, down={1,1}, left={-1,1}, right={1,-1} }
+local BASE_LAYOUT = {
+    basecore = { tx = 0, ty = 0 },
+    depot = { tx = 4, ty = 1 },
+    casino = { tx = -4, ty = 1 },
+    player = { tx = 0, ty = 4 },
+}
+local BASE_CLEARANCE = {
+    basecore = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
+    depot = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
+    casino = { x1 = -2, y1 = -1, x2 = 2, y2 = 2 },
+    player = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
+}
 
 local function screenDirToTile(sx, sy)
     local hw, hh = 32, 16
@@ -61,7 +73,8 @@ function DayState:new(game)
     self.drawOrder = DrawOrder()
     self.tileBatch = TileBatch()
 
-    self.game.tileManager:setProceduralSource(os.time())
+    self.worldSeed = os.time()
+    self.game.tileManager:setProceduralSource(self.worldSeed)
     self.chunks = ChunkManager(self.game.tileManager)
     self.fog    = FogOfWar()
 
@@ -85,6 +98,13 @@ function DayState:new(game)
     self.depot:add("wood",  20)
     self.depot:add("stone", 10)
     self.casino = Casino(-2, 2)
+    self.casinoInterior = {
+        active = false,
+        chunks = nil,
+        spawn = { tx = 5, ty = 7 },
+        table = { tx = 5, ty = 3 },
+        returnPlayer = nil,
+    }
 
     self.buildings = BuildManager(game.eventBus)
     self.buildings:placeFree("basecore", 0, 0)
@@ -99,14 +119,83 @@ function DayState:new(game)
     self.abilityDash = { active = false, remaining = 0, speed = 6.0, dirX = 0, dirY = 0, duration = 0.5 }
     self.combatManager = CombatManager.new(game.world, game.eventBus)
     self.player.speed = self.playerCharacter.stats:getSpeed()
+    self.baseLayoutInitialized = false
+end
+
+function DayState:_isInCasino()
+    return self.casinoInterior.active
+end
+
+function DayState:_getActiveChunks()
+    return self:_isInCasino() and self.casinoInterior.chunks or self.chunks
+end
+
+function DayState:_isNearCasinoTable()
+    local dx = self.player.tx - self.casinoInterior.table.tx
+    local dy = self.player.ty - self.casinoInterior.table.ty
+    return math.sqrt(dx * dx + dy * dy) <= 2.0
+end
+
+function DayState:_enterCasino()
+    if self:_isInCasino() then
+        return
+    end
+
+    self.harvest:cancel()
+    self.ghost:deactivate()
+    self.casinoInterior.returnPlayer = {
+        tx = self.player.tx,
+        ty = self.player.ty,
+        ftx = self.player.ftx,
+        fty = self.player.fty,
+    }
+    self.casinoInterior.active = true
+    self.game.tileManager:setTilemapSource("interior.casino")
+    self.casinoInterior.chunks = ChunkManager(self.game.tileManager)
+    self.player.tx = self.casinoInterior.spawn.tx
+    self.player.ty = self.casinoInterior.spawn.ty
+    self.player.ftx = 0
+    self.player.fty = -1
+
+    local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+    self.camera:moveTo(px, py)
+    self:_showNotice("Entered the casino.")
+end
+
+function DayState:_exitCasino()
+    if not self:_isInCasino() then
+        return
+    end
+
+    local returnPlayer = self.casinoInterior.returnPlayer or {
+        tx = 0,
+        ty = 0,
+        ftx = 0,
+        fty = 1,
+    }
+
+    self.casinoInterior.active = false
+    self.casinoInterior.chunks = nil
+    self.casinoInterior.returnPlayer = nil
+    self.game.tileManager:setProceduralSource(self.worldSeed)
+    self.player.tx = returnPlayer.tx
+    self.player.ty = returnPlayer.ty
+    self.player.ftx = returnPlayer.ftx
+    self.player.fty = returnPlayer.fty
+
+    local px, py = Iso.tileToScreen(self.player.tx, self.player.ty)
+    self.camera:moveTo(px, py)
+    self:_showNotice("Left the casino.")
 end
 
 function DayState:enter(selectedClass)
     print("Entered Day State")
+    self.game.tileManager:setProceduralSource(self.worldSeed)
     self.game.dayCounter = (self.game.dayCounter or 0) + 1
     self.timeRemaining = self.game.config.dayLength
 
     self:_setPlayerClass(selectedClass)
+    self:_ensureBaseLayout()
     self:_ensureValidSpawn()
     self:_syncPlayerCharacterPosition()
     self.game.world:clear()
@@ -140,6 +229,12 @@ end
 
 function DayState:exit()
     print("Exited Day State")
+    if self:_isInCasino() then
+        self.casinoInterior.active = false
+        self.casinoInterior.chunks = nil
+        self.casinoInterior.returnPlayer = nil
+        self.game.tileManager:setProceduralSource(self.worldSeed)
+    end
     self.ghost:deactivate()
     self.harvest:cancel()
     self.dash.active = false
@@ -201,7 +296,7 @@ function DayState:_updateCamera(dt)
 end
 
 function DayState:_updateBuildCursor()
-    if not self.ghost:isActive() then return end
+    if self:_isInCasino() or not self.ghost:isActive() then return end
     local mx, my = love.mouse.getPosition()
     if mx ~= self._prevMouse.x or my ~= self._prevMouse.y then
         self._prevMouse.x = mx
@@ -211,7 +306,13 @@ function DayState:_updateBuildCursor()
 end
 
 function DayState:_updateWorld()
-    self.chunks:update(self.player.tx, self.player.ty)
+    local activeChunks = self:_getActiveChunks()
+    activeChunks:update(self.player.tx, self.player.ty)
+
+    if self:_isInCasino() then
+        return
+    end
+
     self.fog:update(self.player.tx, self.player.ty)
 
     local ptx = math.floor(self.player.tx + 0.5)
@@ -259,19 +360,101 @@ function DayState:update(dt)
     self:_updateBuildCursor()
     self:_updateWorld()
 
-    self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
-    self.respawn:update(dt)
+    if not self:_isInCasino() then
+        self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
+        self.respawn:update(dt)
+        self.combatManager:update(dt)
+        if self.game.world then self.game.world:update(dt) end
+    end
+
     self.playerCharacter:updateVisuals(dt)
     self:_syncPlayerCharacterPosition()
-    self.combatManager:update(dt)
-
-    if self.game.world then self.game.world:update(dt) end
 end
 
 function DayState:_ensureValidSpawn()
     local spawnTx, spawnTy = self:_findNearestWalkableTile(self.player.tx, self.player.ty)
     self.player.tx = spawnTx
     self.player.ty = spawnTy
+end
+
+function DayState:_isWalkableOutdoorTile(tx, ty)
+    local tileType = self.chunks:getTile(tx, ty)
+    return tileType and Tile.isWalkable(tileType) or false
+end
+
+function DayState:_canPlaceBaseLayout(originTx, originTy)
+    local positions = {
+        { name = "basecore", offset = BASE_LAYOUT.basecore },
+        { name = "depot", offset = BASE_LAYOUT.depot },
+        { name = "casino", offset = BASE_LAYOUT.casino },
+        { name = "player", offset = BASE_LAYOUT.player },
+    }
+
+    for _, entry in ipairs(positions) do
+        local footprint = BASE_CLEARANCE[entry.name]
+        for dx = footprint.x1, footprint.x2 do
+            for dy = footprint.y1, footprint.y2 do
+                local tx = originTx + entry.offset.tx + dx
+                local ty = originTy + entry.offset.ty + dy
+                if not self:_isWalkableOutdoorTile(tx, ty) then
+                    return false
+                end
+            end
+        end
+    end
+
+    return true
+end
+
+function DayState:_findBaseLayoutOrigin(originTx, originTy)
+    local startTx = math.floor(originTx + 0.5)
+    local startTy = math.floor(originTy + 0.5)
+
+    if self:_canPlaceBaseLayout(startTx, startTy) then
+        return startTx, startTy
+    end
+
+    for radius = 1, 24 do
+        for dx = -radius, radius do
+            for dy = -radius, radius do
+                if math.abs(dx) == radius or math.abs(dy) == radius then
+                    local tx = startTx + dx
+                    local ty = startTy + dy
+                    if self:_canPlaceBaseLayout(tx, ty) then
+                        return tx, ty
+                    end
+                end
+            end
+        end
+    end
+
+    return startTx, startTy
+end
+
+function DayState:_moveBaseCore(tx, ty)
+    local baseCore = self.buildings:getBaseCore()
+    if baseCore and (baseCore.tx ~= tx or baseCore.ty ~= ty) then
+        self.buildings:remove(baseCore.tx, baseCore.ty)
+        self.buildings:placeFree("basecore", tx, ty)
+    end
+end
+
+function DayState:_ensureBaseLayout()
+    if self.baseLayoutInitialized then
+        return
+    end
+
+    local originTx, originTy = self:_findBaseLayoutOrigin(0, 0)
+    self:_moveBaseCore(originTx + BASE_LAYOUT.basecore.tx, originTy + BASE_LAYOUT.basecore.ty)
+    self.depot.tx = originTx + BASE_LAYOUT.depot.tx
+    self.depot.ty = originTy + BASE_LAYOUT.depot.ty
+    self.casino.tx = originTx + BASE_LAYOUT.casino.tx
+    self.casino.ty = originTy + BASE_LAYOUT.casino.ty
+    self.player.tx = originTx + BASE_LAYOUT.player.tx
+    self.player.ty = originTy + BASE_LAYOUT.player.ty
+    self.player.ftx = 0
+    self.player.fty = -1
+    self.baseLayoutInitialized = true
 end
 
 function DayState:_findNearestWalkableTile(originTx, originTy)
@@ -309,12 +492,14 @@ function DayState:_canMoveTo(tx, ty)
         local tileX = math.floor(point[1] + 0.5)
         local tileY = math.floor(point[2] + 0.5)
 
-        local building = self.buildings:getAt(tileX, tileY)
-        if building and building.def and building.def.blocksMovement then
-            return false
+        if not self:_isInCasino() then
+            local building = self.buildings:getAt(tileX, tileY)
+            if building and building.def and building.def.blocksMovement then
+                return false
+            end
         end
 
-        local tileType = self.chunks:getTile(tileX, tileY)
+        local tileType = self:_getActiveChunks():getTile(tileX, tileY)
         local localX   = point[1] - tileX
         local localY   = point[2] - tileY
         if tileType and not Tile.isPointWalkable(tileType, localX, localY) then
@@ -543,12 +728,28 @@ end
 -- Builds the sorted list of explored tiles to draw this frame.
 function DayState:_buildDrawList(x1, y1, x2, y2)
     local list = {}
+    local activeChunks = self:_getActiveChunks()
+
+    if self:_isInCasino() then
+        for tx = x1, x2 do
+            for ty = y1, y2 do
+                local tileType = activeChunks:getTile(tx, ty)
+                if tileType then
+                    local _, sy = Iso.tileToScreen(tx, ty)
+                    list[#list + 1] = { sy = sy, tx = tx, ty = ty, t = tileType, visible = true }
+                end
+            end
+        end
+        table.sort(list, function(a, b) return a.sy < b.sy end)
+        return list
+    end
+
     for tx = x1, x2 do
         for ty = y1, y2 do
             local state = self.fog:getState(tx, ty)
             if state ~= "hidden" then
                 local tileType = state == "visible"
-                    and self.chunks:getTile(tx, ty)
+                    and activeChunks:getTile(tx, ty)
                     or  self.fog:getCachedType(tx, ty)
                 if tileType then
                     local _, sy = Iso.tileToScreen(tx, ty)
@@ -625,6 +826,10 @@ function DayState:_drawTerrain(drawList, worldTime, entityDrawList)
 end
 
 function DayState:_queueVisibleBuildingDraws(entityDrawList)
+    if self:_isInCasino() then
+        return
+    end
+
     for _, building in ipairs(self.buildings:getAll()) do
         if self.fog:getState(building.tx, building.ty) ~= "hidden" then
             entityDrawList[#entityDrawList + 1] = {
@@ -637,6 +842,10 @@ function DayState:_queueVisibleBuildingDraws(entityDrawList)
 end
 
 function DayState:_shouldDrawNode(node, x1, y1, x2, y2)
+    if self:_isInCasino() then
+        return false
+    end
+
     local tileType = self.chunks:getTile(node.tx, node.ty)
     if node.tx < x1 or node.tx > x2 or node.ty < y1 or node.ty > y2 then
         return false
@@ -674,13 +883,52 @@ function DayState:_drawDepot()
 end
 
 function DayState:_drawCasino()
+    if self:_isInCasino() then
+        return
+    end
+
     self.casino:draw()
     if self.casino:isNearby(self.player.tx, self.player.ty) then
-        self.casino:drawNearbyHint()
+        local sx, sy = Iso.tileToScreen(self.casino.tx, self.casino.ty)
+        local alpha = 0.5 + 0.5 * math.sin(love.timer.getTime() * 3)
+        love.graphics.setColor(0.96, 0.80, 0.22, alpha)
+        love.graphics.circle("line", sx, sy + 16, 36)
+        love.graphics.setColor(1, 0.98, 0.90, alpha)
+        love.graphics.setFont(love.graphics.newFont(11))
+        love.graphics.print("G: Enter Casino", sx - 38, sy + 36)
+    end
+end
+
+function DayState:_drawCasinoTable()
+    local tx = self.casinoInterior.table.tx
+    local ty = self.casinoInterior.table.ty
+    local sx, sy = Iso.tileToScreen(tx, ty)
+    local alpha = 0.55 + 0.35 * math.sin(love.timer.getTime() * 3.5)
+
+    love.graphics.setColor(0.86, 0.12, 0.12, 0.80)
+    love.graphics.polygon("fill",
+        sx, sy + 4,
+        sx + 22, sy + 16,
+        sx, sy + 28,
+        sx - 22, sy + 16)
+    love.graphics.setColor(0.95, 0.80, 0.22, 0.95)
+    love.graphics.polygon("line",
+        sx, sy + 4,
+        sx + 22, sy + 16,
+        sx, sy + 28,
+        sx - 22, sy + 16)
+
+    if self:_isNearCasinoTable() then
+        love.graphics.setColor(0.95, 0.80, 0.22, alpha)
+        love.graphics.circle("line", sx, sy + 16, 34)
+        love.graphics.setColor(1, 0.98, 0.90, alpha)
+        love.graphics.setFont(love.graphics.newFont(11))
+        love.graphics.print("G: Gamble  |  ESC: Leave", sx - 58, sy + 38)
     end
 end
 
 function DayState:_queueDepotDraw(entityDrawList)
+    if self:_isInCasino() then return end
     if self.fog:getState(self.depot.tx, self.depot.ty) == "hidden" then return end
     local _, depotSy = Iso.tileToScreen(self.depot.tx, self.depot.ty)
     entityDrawList[#entityDrawList + 1] = {
@@ -691,12 +939,26 @@ function DayState:_queueDepotDraw(entityDrawList)
 end
 
 function DayState:_queueCasinoDraw(entityDrawList)
+    if self:_isInCasino() then return end
     if self.fog:getState(self.casino.tx, self.casino.ty) == "hidden" then return end
     local _, casinoSy = Iso.tileToScreen(self.casino.tx, self.casino.ty)
     entityDrawList[#entityDrawList + 1] = {
         sy    = casinoSy,
         order = 41,
         draw  = function() self:_drawCasino() end
+    }
+end
+
+function DayState:_queueCasinoTableDraw(entityDrawList)
+    if not self:_isInCasino() then
+        return
+    end
+
+    local _, sy = Iso.tileToScreen(self.casinoInterior.table.tx, self.casinoInterior.table.ty)
+    entityDrawList[#entityDrawList + 1] = {
+        sy = sy,
+        order = 45,
+        draw = function() self:_drawCasinoTable() end
     }
 end
 
@@ -731,18 +993,28 @@ function DayState:draw()
     self:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
     self:_queueDepotDraw(entityDrawList)
     self:_queueCasinoDraw(entityDrawList)
+    self:_queueCasinoTableDraw(entityDrawList)
     self:_queuePlayerDraw(entityDrawList)
     self:_sortAndDrawEntities(entityDrawList)
 
-    self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
-    self.harvest:draw()
-    self.ghost:draw(self.buildings, self.depot, self.inventory)
+    if not self:_isInCasino() then
+        if not self.ghost:isActive() and not self.inventory:isFull() then
+            self.harvest:drawHint(self.player.tx, self.player.ty, self.nodes, self.fog)
+        end
+        self.harvest:draw()
+        self.ghost:draw(self.buildings, self.depot, self.inventory)
+    end
 
     if self.debugMode then self:drawDebugWorld(drawList) end
 
     self.camera:clear()
 
-    self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost)
+    self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost, {
+        inCasino = self:_isInCasino(),
+    })
+    if self:_isInCasino() then
+        self:_drawCasinoOverlay()
+    end
     self:_drawNotice()
 
     if self.debugMode then self:drawDebugUI() end
@@ -818,7 +1090,7 @@ end
 
 function DayState:drawDebugUI()
     local px, py     = Iso.tileToScreen(self.player.tx, self.player.ty)
-    local tileType   = self.chunks:getTile(
+    local tileType   = self:_getActiveChunks():getTile(
         math.floor(self.player.tx + 0.5), math.floor(self.player.ty + 0.5))
     local lines = {
         "=== WORLD DEBUG ===",
@@ -860,7 +1132,7 @@ end
 
 function DayState:_countLoadedChunks()
     local count = 0
-    for _ in pairs(self.chunks._chunks) do count = count + 1 end
+    for _ in pairs(self:_getActiveChunks()._chunks) do count = count + 1 end
     return count
 end
 
@@ -886,7 +1158,22 @@ function DayState:_drawNotice()
     love.graphics.printf(self.notice.text, 0, self.notice.y, love.graphics.getWidth(), "center")
 end
 
+function DayState:_drawCasinoOverlay()
+    love.graphics.setFont(self.smallFont)
+    love.graphics.setColor(0, 0, 0, 0.72)
+    love.graphics.rectangle("fill", 16, 56, 310, 64, 10, 10)
+    love.graphics.setColor(0.95, 0.80, 0.22, 1)
+    love.graphics.print("CASINO FLOOR", 28, 68)
+    love.graphics.setColor(1, 0.97, 0.88, 0.95)
+    love.graphics.print("Reach the table and press G to gamble.", 28, 88)
+    love.graphics.print("Press ESC to leave the building.", 28, 104)
+end
+
 function DayState:_keypressedBuild(key)
+    if self:_isInCasino() then
+        return
+    end
+
     if key == "b" then
         if self.ghost:isActive() then self.ghost:cycleType()
         else self.ghost:activate(self.player.tx, self.player.ty) end
@@ -900,6 +1187,14 @@ function DayState:_keypressedBuild(key)
 end
 
 function DayState:_keypressedAction(key)
+    if self:_isInCasino() then
+        if key == "g" and self:_isNearCasinoTable() then
+            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
+            self:_showNotice(message)
+        end
+        return
+    end
+
     if key == "space" then
         if not self.ghost:isActive() then self:_attackPlayer(1.0, 1.0) end
     elseif key == "q" then
@@ -916,8 +1211,7 @@ function DayState:_keypressedAction(key)
         end
     elseif key == "g" then
         if self.casino:isNearby(self.player.tx, self.player.ty) then
-            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
-            self:_showNotice(message)
+            self:_enterCasino()
         end
     end
 end
@@ -925,7 +1219,8 @@ end
 function DayState:keypressed(key, scancode, isrepeat)
     if isrepeat then return end
     if key == "escape" then
-        if self.ghost:isActive() then self.ghost:deactivate()
+        if self:_isInCasino() then self:_exitCasino()
+        elseif self.ghost:isActive() then self.ghost:deactivate()
         else self.game.stateMachine:setState("menu") end
     elseif key == "f3" then
         self.debugMode = not self.debugMode
@@ -936,6 +1231,16 @@ function DayState:keypressed(key, scancode, isrepeat)
 end
 
 function DayState:gamepadPressed(joystick, button)
+    if self:_isInCasino() then
+        if button == "b" then
+            self:_exitCasino()
+        elseif button == "a" and self:_isNearCasinoTable() then
+            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
+            self:_showNotice(message)
+        end
+        return
+    end
+
     if button == "b" then
         if self.ghost:isActive() then
             self.ghost:deactivate()
@@ -966,6 +1271,8 @@ function DayState:gamepadPressed(joystick, button)
     elseif button == "square" or button == "leftshoulder" then
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
+        elseif self.casino:isNearby(self.player.tx, self.player.ty) then
+            self:_enterCasino()
         end
     end
 end
