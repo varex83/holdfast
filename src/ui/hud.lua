@@ -20,6 +20,8 @@ function HUD:new()
     self._fontLg = love.graphics.newFont(22)
     self._fontMd = love.graphics.newFont(14)
     self._fontSm = love.graphics.newFont(11)
+    self._fontHint = love.graphics.newFont(15)
+    self._fontHintKey = love.graphics.newFont(13)
 end
 
 -- в”Ђв”Ђв”Ђ Public draw entry point в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
@@ -167,21 +169,86 @@ end
 
 -- в”Ђв”Ђв”Ђ Control hints (bottom) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
+function HUD:_drawHintChip(x, y, keyText, descText)
+    local keyPadX = 8
+    local chipH = 28
+
+    love.graphics.setFont(self._fontHintKey)
+    local keyW = self._fontHintKey:getWidth(keyText) + keyPadX * 2
+    love.graphics.setColor(0.94, 0.88, 0.62, 0.95)
+    love.graphics.rectangle("fill", x, y, keyW, chipH, 8, 8)
+    love.graphics.setColor(0.10, 0.11, 0.12, 1)
+    love.graphics.printf(keyText, x, y + 6, keyW, "center")
+
+    love.graphics.setFont(self._fontHint)
+    love.graphics.setColor(0.94, 0.96, 0.98, 0.96)
+    love.graphics.print(descText, x + keyW + 8, y + 5)
+
+    return keyW + 8 + self._fontHint:getWidth(descText)
+end
+
+function HUD:_drawHintRow(x, y, items)
+    local cursorX = x
+    for i, item in ipairs(items) do
+        cursorX = cursorX + self:_drawHintChip(cursorX, y, item.key, item.label)
+        if i < #items then
+            cursorX = cursorX + 18
+        end
+    end
+end
+
 function HUD:_drawControls(input, sh, sw, ghost)
     if ghost and ghost:isActive() then return end  -- banner replaces hints in build mode
 
-    love.graphics.setFont(self._fontSm)
-    love.graphics.setColor(1, 1, 1, 0.75)
+    local rows
+    local panelW = math.min(sw - 32, 880)
+    local panelH = 88
+    local panelX = (sw - panelW) * 0.5
+    local panelY = sh - panelH - 14
 
-    local hints
     if input and input:isUsingGamepad() then
-        hints = "Left Stick: move  |  A: attack  |  Y: ability  |  X: harvest  |  RB: build  |  B: menu  |  Square/LB: deposit"
+        rows = {
+            {
+                { key = "L STICK", label = "Move" },
+                { key = "A", label = "Attack" },
+                { key = "Y", label = "Ability" },
+                { key = "X", label = "Harvest" },
+            },
+            {
+                { key = "RB", label = "Build" },
+                { key = "LB", label = "Deposit" },
+                { key = "B", label = "Menu" },
+            }
+        }
     else
-        hints = "WASD: move  |  SPACE: attack  |  Q: ability  |  SHIFT: dash  |  E: harvest  |  B: build  |  F: deposit  |  Scroll: zoom  |  ESC: menu"
+        rows = {
+            {
+                { key = "WASD / ARROWS", label = "Move" },
+                { key = "SPACE", label = "Attack" },
+                { key = "Q", label = "Ability" },
+                { key = "SHIFT", label = "Dash" },
+            },
+            {
+                { key = "E", label = "Harvest" },
+                { key = "B", label = "Build" },
+                { key = "F", label = "Deposit" },
+                { key = "G", label = "Gamble" },
+                { key = "ESC", label = "Menu" },
+            }
+        }
     end
 
-    local tw = self._fontSm:getWidth(hints)
-    love.graphics.print(hints, (sw - tw) * 0.5, sh - 20)
+    love.graphics.setColor(0.03, 0.04, 0.05, 0.82)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH, 14, 14)
+    love.graphics.setColor(0.78, 0.72, 0.48, 0.92)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH, 14, 14)
+
+    love.graphics.setFont(self._fontSm)
+    love.graphics.setColor(0.92, 0.94, 0.95, 0.9)
+    love.graphics.print("CONTROLS", panelX + 14, panelY + 8)
+
+    self:_drawHintRow(panelX + 14, panelY + 28, rows[1])
+    self:_drawHintRow(panelX + 14, panelY + 56, rows[2])
 end
 
 return HUD
