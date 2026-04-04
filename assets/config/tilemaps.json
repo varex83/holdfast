@@ -1,5 +1,20 @@
 {
   "tilemaps":{
+    "interior.casino":{
+      "path":"assets/tilemaps/casino_interior.lua",
+      "outOfBoundsTileType":"stone",
+      "defaultTileType":"stone",
+      "gidToTileType":{
+        "0":"stone",
+        "1":"dirt",
+        "2":"sand"
+      },
+      "description":"Small casino interior used when entering the spawn casino.",
+      "format":"tiled_lua",
+      "layer":"Ground",
+      "originX":0,
+      "originY":0
+    },
     "sample.beginning_fields":{
       "path":"assets/tilemaps/beginning_fields.lua",
       "outOfBoundsTileType":"grass",
