@@ -5,7 +5,7 @@ local Iso = require("src.rendering.isometric")
 local Casino = Class:extend()
 
 local INTERACT_RADIUS = 3.0
-local WIN_CHANCE = 0.30
+local SLOT_SYMBOLS = { "CHERRY", "BELL", "STAR", "7" }
 
 local function getCasinoImage()
     return AssetManager.getCurrent():getImage("buildings.basecore.house_hay_1")
@@ -22,29 +22,63 @@ function Casino:isNearby(ptx, pty)
     return math.sqrt(dx * dx + dy * dy) <= INTERACT_RADIUS
 end
 
-function Casino:gambleInventory(inventory, depot)
-    if not inventory or inventory:isEmpty() then
-        return false, "Bring resources to gamble."
+function Casino:rollSlotReels()
+    return {
+        SLOT_SYMBOLS[love.math.random(#SLOT_SYMBOLS)],
+        SLOT_SYMBOLS[love.math.random(#SLOT_SYMBOLS)],
+        SLOT_SYMBOLS[love.math.random(#SLOT_SYMBOLS)],
+    }
+end
+
+function Casino:beginSlotSpin(stakeItems)
+    if not stakeItems then
+        return false, "Bring gold to the slot machine."
     end
 
-    local items = inventory:clear()
-    local won = love.math.random() < WIN_CHANCE
     local totalIn = 0
-    for _, amount in pairs(items) do
+    for _, amount in pairs(stakeItems) do
         totalIn = totalIn + amount
     end
-
-    if won then
-        local totalOut = 0
-        for resourceType, amount in pairs(items) do
-            local doubledAmount = amount * 2
-            depot:add(resourceType, doubledAmount)
-            totalOut = totalOut + doubledAmount
-        end
-        return true, string.format("Casino win! %d -> %d resources sent to depot.", totalIn, totalOut)
+    if totalIn <= 0 then
+        return false, "Choose a gold stake before spinning."
     end
 
-    return true, string.format("Casino lost. %d resources vanished.", totalIn)
+    return true, {
+        items = stakeItems,
+        totalIn = totalIn,
+        reels = self:rollSlotReels(),
+    }
+end
+
+function Casino:resolveSlotSpin(spin, inventory)
+    local left, middle, right = spin.reels[1], spin.reels[2], spin.reels[3]
+    local multiplier = 0
+
+    if left == right and right == middle then
+        multiplier = left == "7" and 3 or 2
+    elseif left == middle or middle == right or left == right then
+        multiplier = 1
+    end
+
+    local totalOut = 0
+    if multiplier > 0 then
+        for resourceType, amount in pairs(spin.items) do
+            local payout = amount * multiplier
+            inventory:forceAdd(resourceType, payout)
+            totalOut = totalOut + payout
+        end
+    end
+
+    local reels = string.format("[%s | %s | %s]", left, middle, right)
+    if multiplier == 3 then
+        return true, string.format("Slots jackpot %s  %d gold -> %d gold kept in inventory.", reels, spin.totalIn, totalOut)
+    elseif multiplier == 2 then
+        return true, string.format("Slots win %s  %d gold -> %d gold kept in inventory.", reels, spin.totalIn, totalOut)
+    elseif multiplier == 1 then
+        return true, string.format("Slots push %s  %d gold kept in inventory.", reels, totalOut)
+    end
+
+    return true, string.format("Slots lost %s  %d gold gone.", reels, spin.totalIn)
 end
 
 function Casino:draw()
@@ -79,6 +113,6 @@ function Casino:drawNearbyHint()
 end
 
 Casino.INTERACT_RADIUS = INTERACT_RADIUS
-Casino.WIN_CHANCE = WIN_CHANCE
+Casino.SLOT_SYMBOLS = SLOT_SYMBOLS
 
 return Casino

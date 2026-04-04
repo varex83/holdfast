@@ -49,6 +49,16 @@ function Inventory:add(resourceType, amount)
     return actual
 end
 
+-- Add `amount` units even if it exceeds the normal carry capacity.
+-- Used for special cases like casino payouts that should remain re-bettable.
+function Inventory:forceAdd(resourceType, amount)
+    if amount <= 0 then return 0 end
+
+    self._items[resourceType] = (self._items[resourceType] or 0) + amount
+    self._weight = self._weight + amount * unitWeight(resourceType)
+    return amount
+end
+
 -- Remove `amount` units. Returns actual amount removed.
 function Inventory:remove(resourceType, amount)
     resourceType = self:_normalizeResourceType(resourceType)

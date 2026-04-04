@@ -16,6 +16,7 @@ local RespawnManager = require("src.resources.respawn")
 local Inventory      = require("src.inventory.inventory")
 local SupplyDepot    = require("src.inventory.supplydepot")
 local Casino         = require("src.world.casino")
+local PawnShop       = require("src.world.pawnshop")
 local BuildManager   = require("src.buildings.buildmanager")
 local BuildGhost     = require("src.buildings.buildghost")
 local HUD            = require("src.ui.hud")
@@ -43,12 +44,14 @@ local BASE_LAYOUT = {
     basecore = { tx = 0, ty = 0 },
     depot = { tx = 4, ty = 1 },
     casino = { tx = -4, ty = 1 },
+    pawnshop = { tx = 0, ty = -4 },
     player = { tx = 0, ty = 4 },
 }
 local BASE_CLEARANCE = {
     basecore = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
     depot = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
     casino = { x1 = -2, y1 = -1, x2 = 2, y2 = 2 },
+    pawnshop = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
     player = { x1 = -1, y1 = -1, x2 = 1, y2 = 1 },
 }
 
@@ -64,6 +67,8 @@ function DayState:new(game)
     self.game          = game
     self.font          = love.graphics.newFont(24)
     self.smallFont     = love.graphics.newFont(14)
+    self.slotTitleFont = love.graphics.newFont(18)
+    self.slotFont      = love.graphics.newFont(26)
     self.timeRemaining = 270
 
     local sw = love.graphics.getWidth()
@@ -98,11 +103,25 @@ function DayState:new(game)
     self.depot:add("wood",  20)
     self.depot:add("stone", 10)
     self.casino = Casino(-2, 2)
+    self.pawnShop = PawnShop(0, -2)
     self.casinoInterior = {
         active = false,
         chunks = nil,
         spawn = { tx = 5, ty = 7 },
-        table = { tx = 5, ty = 3 },
+        slotMachine = { tx = 5, ty = 3 },
+        slotUIActive = false,
+        stakeAmount = 0,
+        slotSpin = {
+            active = false,
+            elapsed = 0,
+            duration = 1.2,
+            reelInterval = 0.09,
+            nextRollAt = 0,
+            reels = { "CHERRY", "CHERRY", "CHERRY" },
+            displayReels = { "CHERRY", "CHERRY", "CHERRY" },
+            reelStopTimes = { 0.60, 0.90, 1.20 },
+            pending = nil,
+        },
         returnPlayer = nil,
     }
 
@@ -130,9 +149,13 @@ function DayState:_getActiveChunks()
     return self:_isInCasino() and self.casinoInterior.chunks or self.chunks
 end
 
-function DayState:_isNearCasinoTable()
-    local dx = self.player.tx - self.casinoInterior.table.tx
-    local dy = self.player.ty - self.casinoInterior.table.ty
+function DayState:_isWithinActiveMap(tx, ty)
+    return self.game.tileManager:isWithinActiveTilemap(tx, ty)
+end
+
+function DayState:_isNearSlotMachine()
+    local dx = self.player.tx - self.casinoInterior.slotMachine.tx
+    local dy = self.player.ty - self.casinoInterior.slotMachine.ty
     return math.sqrt(dx * dx + dy * dy) <= 2.0
 end
 
@@ -177,6 +200,10 @@ function DayState:_exitCasino()
     self.casinoInterior.active = false
     self.casinoInterior.chunks = nil
     self.casinoInterior.returnPlayer = nil
+    self.casinoInterior.slotUIActive = false
+    self.casinoInterior.slotSpin.active = false
+    self.casinoInterior.slotSpin.pending = nil
+    self.casinoInterior.stakeAmount = 0
     self.game.tileManager:setProceduralSource(self.worldSeed)
     self.player.tx = returnPlayer.tx
     self.player.ty = returnPlayer.ty
@@ -233,6 +260,10 @@ function DayState:exit()
         self.casinoInterior.active = false
         self.casinoInterior.chunks = nil
         self.casinoInterior.returnPlayer = nil
+        self.casinoInterior.slotUIActive = false
+        self.casinoInterior.slotSpin.active = false
+        self.casinoInterior.slotSpin.pending = nil
+        self.casinoInterior.stakeAmount = 0
         self.game.tileManager:setProceduralSource(self.worldSeed)
     end
     self.ghost:deactivate()
@@ -242,6 +273,12 @@ function DayState:exit()
 end
 
 function DayState:_updateMovement(dt)
+    if self:_isInCasino() and self.casinoInterior.slotUIActive then
+        self.playerCharacter:setDesiredMovement(0, 0)
+        self.playerCharacter:updateState()
+        return
+    end
+
     if self.dash.active then
         self:_updateDash(dt)
         return
@@ -359,6 +396,7 @@ function DayState:update(dt)
     self:_updateCamera(dt)
     self:_updateBuildCursor()
     self:_updateWorld()
+    self:_updateCasinoSpin(dt)
 
     if not self:_isInCasino() then
         self.harvest:update(dt, self.player.tx, self.player.ty, self.nodes, self.inventory)
@@ -369,6 +407,133 @@ function DayState:update(dt)
 
     self.playerCharacter:updateVisuals(dt)
     self:_syncPlayerCharacterPosition()
+end
+
+function DayState:_startSlotSpin()
+    local stakeItems, totalIn = self:_buildSlotStake()
+    if totalIn <= 0 then
+        self:_showNotice("Bring more gold for that stake.", 2.8)
+        return
+    end
+
+    for resourceType, amount in pairs(stakeItems) do
+        self.inventory:remove(resourceType, amount)
+    end
+
+    local ok, result = self.casino:beginSlotSpin(stakeItems)
+    if not ok then
+        for resourceType, amount in pairs(stakeItems) do
+            self.inventory:forceAdd(resourceType, amount)
+        end
+        self:_showNotice(result, 2.8)
+        return
+    end
+
+    local spin = self.casinoInterior.slotSpin
+    spin.active = true
+    spin.elapsed = 0
+    spin.nextRollAt = 0
+    spin.pending = result
+    spin.reels = { "CHERRY", "BELL", "STAR" }
+    spin.displayReels = self.casino:rollSlotReels()
+end
+
+function DayState:_openSlotMachineUI()
+    self.casinoInterior.slotUIActive = true
+    self:_normalizeSlotStake(true)
+end
+
+function DayState:_closeSlotMachineUI()
+    if self.casinoInterior.slotSpin.active then
+        return
+    end
+
+    self.casinoInterior.slotUIActive = false
+end
+
+function DayState:_formatSlotStake()
+    local _, totalIn = self:_buildSlotStake()
+    local totalGold = self.inventory:count("gold")
+
+    return string.format("%d gold selected  |  %d available", totalIn, totalGold)
+end
+
+function DayState:_buildSlotStake()
+    local totalIn = self:_normalizeSlotStake(false)
+
+    return { gold = totalIn }, totalIn
+end
+
+function DayState:_normalizeSlotStake(resetIfEmpty)
+    local goldAmount = self.inventory:count("gold")
+    if goldAmount <= 0 then
+        self.casinoInterior.stakeAmount = 0
+        return 0
+    end
+
+    if resetIfEmpty and self.casinoInterior.stakeAmount <= 0 then
+        self.casinoInterior.stakeAmount = 1
+    end
+
+    self.casinoInterior.stakeAmount = math.max(1, math.min(self.casinoInterior.stakeAmount, goldAmount))
+    return self.casinoInterior.stakeAmount
+end
+
+function DayState:_changeSlotStake(direction)
+    if self.casinoInterior.slotSpin.active then
+        return
+    end
+
+    local currentStake = self:_normalizeSlotStake(true)
+    if currentStake <= 0 then
+        return
+    end
+
+    local nextStake = currentStake + direction
+    self.casinoInterior.stakeAmount = nextStake
+    self:_normalizeSlotStake(false)
+end
+
+function DayState:_currentStakeLabel()
+    return tostring(self:_normalizeSlotStake(false)) .. "g"
+end
+
+function DayState:_updateCasinoSpin(dt)
+    if not self:_isInCasino() then
+        return
+    end
+
+    local spin = self.casinoInterior.slotSpin
+    if self.casinoInterior.slotUIActive and not spin.active and not self:_isNearSlotMachine() then
+        self:_closeSlotMachineUI()
+        return
+    end
+
+    if not spin.active then
+        return
+    end
+
+    spin.elapsed = spin.elapsed + dt
+    if spin.elapsed >= spin.nextRollAt and spin.elapsed < spin.duration then
+        local nextReels = self.casino:rollSlotReels()
+        for i = 1, 3 do
+            if spin.elapsed < spin.reelStopTimes[i] then
+                spin.displayReels[i] = nextReels[i]
+            else
+                spin.displayReels[i] = spin.pending.reels[i]
+            end
+        end
+        spin.nextRollAt = spin.nextRollAt + spin.reelInterval
+    end
+
+    if spin.elapsed >= spin.duration then
+        spin.active = false
+        spin.reels = spin.pending.reels
+        spin.displayReels = spin.pending.reels
+        local _, message = self.casino:resolveSlotSpin(spin.pending, self.inventory)
+        spin.pending = nil
+        self:_showNotice(message, 4.2)
+    end
 end
 
 function DayState:_ensureValidSpawn()
@@ -387,6 +552,7 @@ function DayState:_canPlaceBaseLayout(originTx, originTy)
         { name = "basecore", offset = BASE_LAYOUT.basecore },
         { name = "depot", offset = BASE_LAYOUT.depot },
         { name = "casino", offset = BASE_LAYOUT.casino },
+        { name = "pawnshop", offset = BASE_LAYOUT.pawnshop },
         { name = "player", offset = BASE_LAYOUT.player },
     }
 
@@ -450,6 +616,8 @@ function DayState:_ensureBaseLayout()
     self.depot.ty = originTy + BASE_LAYOUT.depot.ty
     self.casino.tx = originTx + BASE_LAYOUT.casino.tx
     self.casino.ty = originTy + BASE_LAYOUT.casino.ty
+    self.pawnShop.tx = originTx + BASE_LAYOUT.pawnshop.tx
+    self.pawnShop.ty = originTy + BASE_LAYOUT.pawnshop.ty
     self.player.tx = originTx + BASE_LAYOUT.player.tx
     self.player.ty = originTy + BASE_LAYOUT.player.ty
     self.player.ftx = 0
@@ -491,6 +659,10 @@ function DayState:_canMoveTo(tx, ty)
     for _, point in ipairs(samplePoints) do
         local tileX = math.floor(point[1] + 0.5)
         local tileY = math.floor(point[2] + 0.5)
+
+        if self:_isInCasino() and not self:_isWithinActiveMap(tileX, tileY) then
+            return false
+        end
 
         if not self:_isInCasino() then
             local building = self.buildings:getAt(tileX, tileY)
@@ -733,10 +905,12 @@ function DayState:_buildDrawList(x1, y1, x2, y2)
     if self:_isInCasino() then
         for tx = x1, x2 do
             for ty = y1, y2 do
-                local tileType = activeChunks:getTile(tx, ty)
-                if tileType then
-                    local _, sy = Iso.tileToScreen(tx, ty)
-                    list[#list + 1] = { sy = sy, tx = tx, ty = ty, t = tileType, visible = true }
+                if self:_isWithinActiveMap(tx, ty) then
+                    local tileType = activeChunks:getTile(tx, ty)
+                    if tileType then
+                        local _, sy = Iso.tileToScreen(tx, ty)
+                        list[#list + 1] = { sy = sy, tx = tx, ty = ty, t = tileType, visible = true }
+                    end
                 end
             end
         end
@@ -892,31 +1066,51 @@ function DayState:_drawCasino()
     end
 end
 
-function DayState:_drawCasinoTable()
-    local tx = self.casinoInterior.table.tx
-    local ty = self.casinoInterior.table.ty
+function DayState:_drawPawnShop()
+    if self:_isInCasino() then
+        return
+    end
+
+    self.pawnShop:draw()
+    if self.pawnShop:isNearby(self.player.tx, self.player.ty) then
+        self.pawnShop:drawNearbyHint()
+    end
+end
+
+function DayState:_drawSlotMachine()
+    local tx = self.casinoInterior.slotMachine.tx
+    local ty = self.casinoInterior.slotMachine.ty
     local sx, sy = Iso.tileToScreen(tx, ty)
     local alpha = 0.55 + 0.35 * math.sin(love.timer.getTime() * 3.5)
+    local spin = self.casinoInterior.slotSpin
 
-    love.graphics.setColor(0.86, 0.12, 0.12, 0.80)
-    love.graphics.polygon("fill",
-        sx, sy + 4,
-        sx + 22, sy + 16,
-        sx, sy + 28,
-        sx - 22, sy + 16)
+    love.graphics.setColor(0.70, 0.12, 0.12, 0.88)
+    love.graphics.rectangle("fill", sx - 18, sy - 10, 36, 40, 6, 6)
     love.graphics.setColor(0.95, 0.80, 0.22, 0.95)
-    love.graphics.polygon("line",
-        sx, sy + 4,
-        sx + 22, sy + 16,
-        sx, sy + 28,
-        sx - 22, sy + 16)
+    love.graphics.rectangle("line", sx - 18, sy - 10, 36, 40, 6, 6)
+    love.graphics.setColor(0.12, 0.12, 0.12, 1)
+    love.graphics.rectangle("fill", sx - 12, sy - 4, 24, 12, 4, 4)
+    love.graphics.setColor(1, 0.95, 0.65, 1)
+    love.graphics.rectangle("line", sx - 12, sy - 4, 24, 12, 4, 4)
+    love.graphics.setFont(love.graphics.newFont(8))
+    love.graphics.printf(string.sub(spin.reels[1], 1, 1) .. string.sub(spin.reels[2], 1, 1) .. string.sub(spin.reels[3], 1, 1), sx - 12, sy - 2, 24, "center")
 
-    if self:_isNearCasinoTable() then
+    if spin.active then
         love.graphics.setColor(0.95, 0.80, 0.22, alpha)
         love.graphics.circle("line", sx, sy + 16, 34)
         love.graphics.setColor(1, 0.98, 0.90, alpha)
         love.graphics.setFont(love.graphics.newFont(11))
-        love.graphics.print("G: Gamble  |  ESC: Leave", sx - 58, sy + 38)
+        love.graphics.print("Spinning...", sx - 28, sy + 38)
+    elseif self:_isNearSlotMachine() then
+        love.graphics.setColor(0.95, 0.80, 0.22, alpha)
+        love.graphics.circle("line", sx, sy + 16, 34)
+        love.graphics.setColor(1, 0.98, 0.90, alpha)
+        love.graphics.setFont(love.graphics.newFont(11))
+        if self.casinoInterior.slotUIActive then
+            love.graphics.print("G: Spin Slots  |  ESC: Close", sx - 62, sy + 38)
+        else
+            love.graphics.print("G: Use Slots", sx - 28, sy + 38)
+        end
     end
 end
 
@@ -942,16 +1136,27 @@ function DayState:_queueCasinoDraw(entityDrawList)
     }
 end
 
-function DayState:_queueCasinoTableDraw(entityDrawList)
+function DayState:_queuePawnShopDraw(entityDrawList)
+    if self:_isInCasino() then return end
+    if self.fog:getState(self.pawnShop.tx, self.pawnShop.ty) == "hidden" then return end
+    local _, pawnShopSy = Iso.tileToScreen(self.pawnShop.tx, self.pawnShop.ty)
+    entityDrawList[#entityDrawList + 1] = {
+        sy = pawnShopSy,
+        order = 42,
+        draw = function() self:_drawPawnShop() end
+    }
+end
+
+function DayState:_queueSlotMachineDraw(entityDrawList)
     if not self:_isInCasino() then
         return
     end
 
-    local _, sy = Iso.tileToScreen(self.casinoInterior.table.tx, self.casinoInterior.table.ty)
+    local _, sy = Iso.tileToScreen(self.casinoInterior.slotMachine.tx, self.casinoInterior.slotMachine.ty)
     entityDrawList[#entityDrawList + 1] = {
         sy = sy,
         order = 45,
-        draw = function() self:_drawCasinoTable() end
+        draw = function() self:_drawSlotMachine() end
     }
 end
 
@@ -986,7 +1191,8 @@ function DayState:draw()
     self:_queueVisibleNodeDraws(entityDrawList, x1, y1, x2, y2)
     self:_queueDepotDraw(entityDrawList)
     self:_queueCasinoDraw(entityDrawList)
-    self:_queueCasinoTableDraw(entityDrawList)
+    self:_queuePawnShopDraw(entityDrawList)
+    self:_queueSlotMachineDraw(entityDrawList)
     self:_queuePlayerDraw(entityDrawList)
     self:_sortAndDrawEntities(entityDrawList)
 
@@ -1004,8 +1210,11 @@ function DayState:draw()
 
     self.hud:draw(self.game, self.inventory, self.depot, self.player, self.ghost, {
         inCasino = self:_isInCasino(),
+        slotUIActive = self.casinoInterior.slotUIActive,
+        slotSpinActive = self.casinoInterior.slotSpin.active,
+        slotStakeLabel = self:_currentStakeLabel(),
     })
-    if self:_isInCasino() then
+    if self:_isInCasino() and self.casinoInterior.slotUIActive then
         self:_drawCasinoOverlay()
     end
     self:_drawNotice()
@@ -1129,13 +1338,14 @@ function DayState:_countLoadedChunks()
     return count
 end
 
-function DayState:_showNotice(text)
+function DayState:_showNotice(text, holdTime)
     self.notice.text = text
     self.notice.alpha = 0
     self.notice.y = 36
     self.game.tweens:stop(self.notice)
+    holdTime = holdTime or 1.0
     self.game.tweens:to(self.notice, 0.18, { alpha = 1, y = 52 }):ease("quadout"):oncomplete(function()
-        self.game.tweens:to(self.notice, 0.35, { alpha = 0, y = 58 }):delay(1.0)
+        self.game.tweens:to(self.notice, 0.35, { alpha = 0, y = 58 }):delay(holdTime)
     end)
 end
 
@@ -1152,14 +1362,77 @@ function DayState:_drawNotice()
 end
 
 function DayState:_drawCasinoOverlay()
+    local sw, sh = love.graphics.getWidth(), love.graphics.getHeight()
+    local spin = self.casinoInterior.slotSpin
+    local panelW, panelH = 560, 260
+    local panelX = (sw - panelW) * 0.5
+    local panelY = 34
+    local reelY = panelY + 64
+    local reelW = 116
+    local reelH = 92
+    local reelGap = 24
+    local firstReelX = panelX + 58
+
+    local function shortSymbol(symbol)
+        if symbol == "CHERRY" then return "CHERRY" end
+        if symbol == "BELL" then return "BELL" end
+        if symbol == "STAR" then return "STAR" end
+        return "7"
+    end
+
+    local function drawReel(x, y, currentSymbol, active, index)
+        local upperSymbols = { "CHERRY", "BELL", "STAR" }
+        local lowerSymbols = { "BELL", "STAR", "7" }
+
+        love.graphics.setColor(0.88, 0.70, 0.20, 1)
+        love.graphics.rectangle("fill", x - 8, y - 8, reelW + 16, reelH + 16, 12, 12)
+        love.graphics.setColor(0.97, 0.95, 0.90, 1)
+        love.graphics.rectangle("fill", x, y, reelW, reelH, 10, 10)
+        love.graphics.setColor(0.76, 0.58, 0.12, 1)
+        love.graphics.rectangle("line", x, y, reelW, reelH, 10, 10)
+
+        love.graphics.setFont(self.smallFont)
+        love.graphics.setColor(0.45, 0.45, 0.45, active and 0.22 or 0.12)
+        love.graphics.printf(shortSymbol(upperSymbols[index]), x, y + 10, reelW, "center")
+        love.graphics.printf(shortSymbol(lowerSymbols[index]), x, y + 58, reelW, "center")
+
+        love.graphics.setFont(self.slotFont)
+        if currentSymbol == "7" then
+            love.graphics.setColor(0.84, 0.08, 0.12, 1)
+        else
+            love.graphics.setColor(0.16, 0.20, 0.24, 1)
+        end
+        love.graphics.printf(shortSymbol(currentSymbol), x, y + 28, reelW, "center")
+    end
+
+    love.graphics.setColor(0, 0, 0, 0.76)
+    love.graphics.rectangle("fill", panelX, panelY, panelW, panelH, 18, 18)
+    love.graphics.setColor(0.86, 0.68, 0.16, 1)
+    love.graphics.rectangle("line", panelX, panelY, panelW, panelH, 18, 18)
+
+    love.graphics.setFont(self.slotTitleFont)
+    love.graphics.setColor(0.98, 0.84, 0.22, 1)
+    love.graphics.printf("HOLDFAST SLOTS", panelX, panelY + 18, panelW, "center")
+
+    for i = 1, 3 do
+        drawReel(
+            firstReelX + (i - 1) * (reelW + reelGap),
+            reelY,
+            spin.displayReels[i],
+            spin.active and spin.elapsed < spin.reelStopTimes[i],
+            i
+        )
+    end
+
     love.graphics.setFont(self.smallFont)
-    love.graphics.setColor(0, 0, 0, 0.72)
-    love.graphics.rectangle("fill", 16, 56, 310, 64, 10, 10)
-    love.graphics.setColor(0.95, 0.80, 0.22, 1)
-    love.graphics.print("CASINO FLOOR", 28, 68)
     love.graphics.setColor(1, 0.97, 0.88, 0.95)
-    love.graphics.print("Reach the table and press G to gamble.", 28, 88)
-    love.graphics.print("Press ESC to leave the building.", 28, 104)
+    if spin.active then
+        love.graphics.printf("Spinning reels...", panelX, panelY + 172, panelW, "center")
+    else
+        love.graphics.printf("Stake:", panelX, panelY + 168, panelW, "center")
+        love.graphics.printf(self:_formatSlotStake(), panelX + 24, panelY + 190, panelW - 48, "center")
+        love.graphics.printf("LEFT / RIGHT: Adjust Gold Stake   G: Run Machine   ESC: Leave Machine", panelX, panelY + 222, panelW, "center")
+    end
 end
 
 function DayState:_keypressedBuild(key)
@@ -1181,9 +1454,18 @@ end
 
 function DayState:_keypressedAction(key)
     if self:_isInCasino() then
-        if key == "g" and self:_isNearCasinoTable() then
-            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
-            self:_showNotice(message)
+        if self.casinoInterior.slotUIActive and key == "left" then
+            self:_changeSlotStake(-1)
+        elseif self.casinoInterior.slotUIActive and key == "right" then
+            self:_changeSlotStake(1)
+        elseif key == "g" and self.casinoInterior.slotUIActive and not self.casinoInterior.slotSpin.active then
+            self:_startSlotSpin()
+        elseif key == "g" and self:_isNearSlotMachine() and not self.casinoInterior.slotSpin.active then
+            if self.casinoInterior.slotUIActive then
+                self:_startSlotSpin()
+            else
+                self:_openSlotMachineUI()
+            end
         end
         return
     end
@@ -1202,6 +1484,11 @@ function DayState:_keypressedAction(key)
         if self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
         end
+    elseif key == "h" then
+        if self.pawnShop:isNearby(self.player.tx, self.player.ty) then
+            local _, message = self.pawnShop:sellInventory(self.inventory)
+            self:_showNotice(message, 2.8)
+        end
     elseif key == "g" then
         if self.casino:isNearby(self.player.tx, self.player.ty) then
             self:_enterCasino()
@@ -1212,9 +1499,17 @@ end
 function DayState:keypressed(key, scancode, isrepeat)
     if isrepeat then return end
     if key == "escape" then
-        if self:_isInCasino() then self:_exitCasino()
-        elseif self.ghost:isActive() then self.ghost:deactivate()
-        else self.game.stateMachine:setState("menu") end
+        if self:_isInCasino() then
+            if self.casinoInterior.slotUIActive and not self.casinoInterior.slotSpin.active then
+                self:_closeSlotMachineUI()
+            else
+                self:_exitCasino()
+            end
+        elseif self.ghost:isActive() then
+            self.ghost:deactivate()
+        else
+            self.game.stateMachine:setState("menu")
+        end
     elseif key == "f3" then
         self.debugMode = not self.debugMode
     else
@@ -1226,10 +1521,23 @@ end
 function DayState:gamepadPressed(joystick, button)
     if self:_isInCasino() then
         if button == "b" then
-            self:_exitCasino()
-        elseif button == "a" and self:_isNearCasinoTable() then
-            local _, message = self.casino:gambleInventory(self.inventory, self.depot)
-            self:_showNotice(message)
+            if self.casinoInterior.slotUIActive and not self.casinoInterior.slotSpin.active then
+                self:_closeSlotMachineUI()
+            else
+                self:_exitCasino()
+            end
+        elseif self.casinoInterior.slotUIActive and button == "dpleft" then
+            self:_changeSlotStake(-1)
+        elseif self.casinoInterior.slotUIActive and button == "dpright" then
+            self:_changeSlotStake(1)
+        elseif button == "a" and self.casinoInterior.slotUIActive and not self.casinoInterior.slotSpin.active then
+            self:_startSlotSpin()
+        elseif button == "a" and self:_isNearSlotMachine() and not self.casinoInterior.slotSpin.active then
+            if self.casinoInterior.slotUIActive then
+                self:_startSlotSpin()
+            else
+                self:_openSlotMachineUI()
+            end
         end
         return
     end
@@ -1262,7 +1570,10 @@ function DayState:gamepadPressed(joystick, button)
             self.harvest:tryStart(self.player.tx, self.player.ty, self.nodes, self.inventory)
         end
     elseif button == "square" or button == "leftshoulder" then
-        if self.depot:isNearby(self.player.tx, self.player.ty) then
+        if self.pawnShop:isNearby(self.player.tx, self.player.ty) then
+            local _, message = self.pawnShop:sellInventory(self.inventory)
+            self:_showNotice(message, 2.8)
+        elseif self.depot:isNearby(self.player.tx, self.player.ty) then
             self.depot:depositAll(self.inventory)
         elseif self.casino:isNearby(self.player.tx, self.player.ty) then
             self:_enterCasino()

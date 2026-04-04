@@ -40,14 +40,21 @@ end
 
 -- Deposit all items from `inventory` into the depot.
 function SupplyDepot:depositAll(inventory)
-    local items = inventory:clear()
+    local items = inventory:getItems()
+    local deposited = {}
     for rtype, amt in pairs(items) do
-        self:add(rtype, amt)
-        if self.eventBus then
-            self.eventBus:publish("resource_deposited", rtype, amt)
+        if rtype ~= "gold" and amt > 0 then
+            local removed = inventory:remove(rtype, amt)
+            if removed > 0 then
+                self:add(rtype, removed)
+                deposited[rtype] = removed
+                if self.eventBus then
+                    self.eventBus:publish("resource_deposited", rtype, removed)
+                end
+            end
         end
     end
-    return items
+    return deposited
 end
 
 -- Withdraw `amount` of `resourceType` into `inventory`. Returns actual withdrawn.
