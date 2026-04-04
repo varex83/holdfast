@@ -82,6 +82,19 @@ function TileManager:getResourceType(tx, ty)
     return data and data.resourceType or nil
 end
 
+function TileManager:isWithinActiveTilemap(tx, ty)
+    if self.source.mode ~= "tilemap" or not self.tilemapState then
+        return true
+    end
+
+    local def = self.tilemapState.definition
+    local layer = self.tilemapState.layer
+    local localX = tx - (def.originX or 0)
+    local localY = ty - (def.originY or 0)
+
+    return localX >= 0 and localY >= 0 and localX < layer.width and localY < layer.height
+end
+
 function TileManager:_getProceduralTileData(tx, ty)
     local tileType = WorldGen.getTileAt(tx, ty)
     return {

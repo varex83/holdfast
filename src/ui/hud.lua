@@ -78,11 +78,12 @@ function HUD:_drawInventory(inventory, sh)
 
     -- Weight bar
     local ratio = inventory:fillRatio()
+    local fillRatio = math.min(1, ratio)
     local barColor = ratio > 0.85 and {0.95, 0.25, 0.25} or {0.25, 0.85, 0.35}
     love.graphics.setColor(0.3, 0.3, 0.3, 0.9)
     love.graphics.rectangle("fill", PAD, panelY, BAR_W, BAR_H)
     love.graphics.setColor(barColor[1], barColor[2], barColor[3], 1)
-    love.graphics.rectangle("fill", PAD, panelY, BAR_W * ratio, BAR_H)
+    love.graphics.rectangle("fill", PAD, panelY, BAR_W * fillRatio, BAR_H)
     love.graphics.setColor(0.7, 0.7, 0.7, 0.8)
     love.graphics.rectangle("line", PAD, panelY, BAR_W, BAR_H)
 
@@ -207,26 +208,48 @@ function HUD:_drawControls(input, sh, sw, ghost, context)
     local panelX = (sw - panelW) * 0.5
     local panelY = sh - panelH - 14
 
-    if context and context.inCasino and input and input:isUsingGamepad() then
+    if context and context.inCasino and context.slotUIActive and input and input:isUsingGamepad() then
+        rows = {
+            {
+                { key = "D-PAD L/R", label = "Stake " .. (context.slotStakeLabel or "100%") },
+                { key = "A", label = context.slotSpinActive and "Spinning" or "Run Machine" },
+                { key = "B", label = "Leave Machine" },
+            },
+            {
+                { key = "GOLD", label = "Adjust exact wager" },
+            }
+        }
+    elseif context and context.inCasino and context.slotUIActive then
+        rows = {
+            {
+                { key = "LEFT / RIGHT", label = "Stake " .. (context.slotStakeLabel or "100%") },
+                { key = "G", label = context.slotSpinActive and "Spinning" or "Run Machine" },
+                { key = "ESC", label = "Leave Machine" },
+            },
+            {
+                { key = "GOLD", label = "Adjust exact wager" },
+            }
+        }
+    elseif context and context.inCasino and input and input:isUsingGamepad() then
         rows = {
             {
                 { key = "L STICK", label = "Move" },
-                { key = "A", label = "Gamble" },
+                { key = "A", label = "Use Slots" },
                 { key = "B", label = "Leave" },
             },
             {
-                { key = "TABLE", label = "Use nearby" },
+                { key = "SLOT", label = "Approach machine" },
             }
         }
     elseif context and context.inCasino then
         rows = {
             {
                 { key = "WASD / ARROWS", label = "Move" },
-                { key = "G", label = "Gamble" },
+                { key = "G", label = "Use Slots" },
                 { key = "ESC", label = "Leave" },
             },
             {
-                { key = "TABLE", label = "Use nearby" },
+                { key = "SLOT", label = "Approach machine" },
             }
         }
     elseif input and input:isUsingGamepad() then
@@ -239,7 +262,7 @@ function HUD:_drawControls(input, sh, sw, ghost, context)
             },
             {
                 { key = "RB", label = "Build" },
-                { key = "LB", label = "Deposit" },
+                { key = "LB", label = "Base Action" },
                 { key = "B", label = "Menu" },
             }
         }
@@ -255,6 +278,7 @@ function HUD:_drawControls(input, sh, sw, ghost, context)
                 { key = "E", label = "Harvest" },
                 { key = "B", label = "Build" },
                 { key = "F", label = "Deposit" },
+                { key = "H", label = "Sell" },
                 { key = "G", label = "Enter Casino" },
                 { key = "ESC", label = "Menu" },
             }
