@@ -461,7 +461,7 @@ function MenuState:selectOption()
         self.game.stateMachine:setState("asset_manager")
     elseif self.selectedOption == 3 then
         -- New Game
-        self.game.stateMachine:setState("world", selectedClass)
+        self.game.stateMachine:setState("day", selectedClass)
     elseif self.selectedOption == 4 then
         -- Load Game (not implemented yet)
         print("Load Game not implemented yet")
