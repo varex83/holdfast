@@ -195,6 +195,31 @@ test('DayPhase build mode starts from the current ghost tile', function()
     assertEqual(ty, 5, 'build ghost should start at current ghost tile y')
 end)
 
+test('MenuState starts a new game in the day state', function()
+    local MenuState = require('src.states.menustate')
+    local targetState, targetClass
+    local fakeState = {
+        selectedOption = 3,
+        classSelect = {
+            getSelectedClass = function()
+                return 'scout'
+            end,
+        },
+        game = {
+            stateMachine = {
+                setState = function(_, stateName, classType)
+                    targetState = stateName
+                    targetClass = classType
+                end,
+            },
+        },
+    }
+
+    MenuState.selectOption(fakeState)
+    assertEqual(targetState, 'day', 'new game should route to day state')
+    assertEqual(targetClass, 'scout', 'selected class should be forwarded to the state machine')
+end)
+
 if failures > 0 then
     io.stderr:write(string.format('\n%d/%d tests failed\n', failures, testsRun))
     os.exit(1)
